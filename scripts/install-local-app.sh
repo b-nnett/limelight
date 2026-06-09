@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="Limelight"
+APP_EXECUTABLE_NAME="Limelight"
+PRODUCT_NAME="spotlight-index"
 BUNDLE_ID="com.bennett.spotlight-index.local"
 APP_DIR="${SPOTLIGHT_INDEX_APP_DIR:-$HOME/Applications/$APP_NAME.app}"
 HOST="${SPOTLIGHT_INDEX_HOST:-127.0.0.1}"
@@ -122,12 +124,15 @@ done
 
 cd "$ROOT_DIR"
 ensure_auth_token
-swift build -c release --product spotlight-index
+swift build -c release --product "$PRODUCT_NAME"
+
+launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/$BUNDLE_ID.plist" >/dev/null 2>&1 || true
+pkill -f "$APP_DIR/Contents/MacOS/" >/dev/null 2>&1 || true
 
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
-cp "$ROOT_DIR/.build/release/spotlight-index" "$APP_DIR/Contents/MacOS/spotlight-index"
+cp "$ROOT_DIR/.build/release/$PRODUCT_NAME" "$APP_DIR/Contents/MacOS/$APP_EXECUTABLE_NAME"
 cp "$ROOT_DIR/Sources/spotlight-index/Resources/limelight.png" "$APP_DIR/Contents/Resources/limelight.png"
 cp "$ROOT_DIR/Sources/spotlight-index/Resources/limelight-menu.png" "$APP_DIR/Contents/Resources/limelight-menu.png"
 cp "$ROOT_DIR/Sources/spotlight-index/Resources/limelight-menu-template.png" "$APP_DIR/Contents/Resources/limelight-menu-template.png"
@@ -154,7 +159,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
 	<key>CFBundleExecutable</key>
-	<string>spotlight-index</string>
+	<string>$APP_EXECUTABLE_NAME</string>
 	<key>CFBundleIdentifier</key>
 	<string>$BUNDLE_ID</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -209,10 +214,7 @@ if [[ "$INSTALL_LAUNCH_AGENT" -eq 1 ]]; then
 	<string>$BUNDLE_ID</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/usr/bin/open</string>
-		<string>-gj</string>
-		<string>$APP_DIR</string>
-		<string>--args</string>
+		<string>$APP_DIR/Contents/MacOS/$APP_EXECUTABLE_NAME</string>
 		<string>--host</string>
 		<string>$HOST</string>
 		<string>--port</string>
@@ -245,4 +247,4 @@ echo "Code signing identity: $CODESIGN_IDENTITY"
 echo "HTTP auth: enabled"
 echo "HTTP auth token file: $AUTH_TOKEN_FILE"
 echo "Grant Full Disk Access to this app bundle, then launch it with:"
-echo "  open -gj \"$APP_DIR\" --args --host \"$HOST\" --port \"$PORT\""
+echo "  \"$APP_DIR/Contents/MacOS/$APP_EXECUTABLE_NAME\" --host \"$HOST\" --port \"$PORT\""

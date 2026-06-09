@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="${LIMELIGHT_APP_NAME:-Limelight}"
+APP_EXECUTABLE_NAME="${LIMELIGHT_EXECUTABLE_NAME:-Limelight}"
 PRODUCT_NAME="spotlight-index"
 BUNDLE_ID="${LIMELIGHT_BUNDLE_ID:-com.bennett.limelight}"
 VERSION="${LIMELIGHT_VERSION:-}"
@@ -115,7 +116,7 @@ write_info_plist() {
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>$PRODUCT_NAME</string>
+	<string>$APP_EXECUTABLE_NAME</string>
 	<key>CFBundleIdentifier</key>
 	<string>$BUNDLE_ID</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -214,7 +215,7 @@ swift build -c release --product "$PRODUCT_NAME"
 rm -rf "$WORK_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" "$DIST_DIR"
 
-cp "$ROOT_DIR/.build/release/$PRODUCT_NAME" "$APP_DIR/Contents/MacOS/$PRODUCT_NAME"
+cp "$ROOT_DIR/.build/release/$PRODUCT_NAME" "$APP_DIR/Contents/MacOS/$APP_EXECUTABLE_NAME"
 cp "$ROOT_DIR/Sources/spotlight-index/Resources/limelight.png" "$APP_DIR/Contents/Resources/limelight.png"
 cp "$ROOT_DIR/Sources/spotlight-index/Resources/limelight-menu.png" "$APP_DIR/Contents/Resources/limelight-menu.png"
 cp "$ROOT_DIR/Sources/spotlight-index/Resources/limelight-menu-template.png" "$APP_DIR/Contents/Resources/limelight-menu-template.png"

@@ -33,7 +33,7 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
         startServer()
         SpotlightSearchService.warmProviderIndexes()
         refreshProviderStatus()
-        showPermissionsAfterInstallIfNeeded()
+        showPermissionsOnLaunchIfNeeded()
         updateService.startPeriodicChecks()
         statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -101,6 +101,7 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             configureStatusButton(statusItem?.button, warning: true)
             presentError("Failed to start Limelight: \(error.localizedDescription)")
+            NSApp.terminate(nil)
         }
     }
 
@@ -167,11 +168,12 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openPermissions() {
-        if permissionsWindow == nil {
+        if permissionsWindow == nil || permissionsWindow?.window == nil {
             permissionsWindow = PermissionsWindowController()
         }
         permissionsWindow?.update(status: lastProviderStatus)
         permissionsWindow?.showWindow(nil)
+        permissionsWindow?.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -202,7 +204,15 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func showPermissionsAfterInstallIfNeeded() {
+    private func showPermissionsOnLaunchIfNeeded() {
+        if let lastProviderStatus,
+           !PermissionsWindowController.fullDiskAccessLooksReady(lastProviderStatus) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+                self?.openPermissions()
+            }
+            return
+        }
+
         guard let executableURL = Bundle.main.executableURL,
               let attributes = try? FileManager.default.attributesOfItem(atPath: executableURL.path),
               let modifiedAt = attributes[.modificationDate] as? Date else {
@@ -429,7 +439,7 @@ final class PermissionsWindowController: NSWindowController, NSToolbarDelegate {
         NSWorkspace.shared.open(URL(string: "https://github.com/b-nnett/limelight")!)
     }
 
-    private static func fullDiskAccessLooksReady(_ status: ProvidersResponse) -> Bool {
+    static func fullDiskAccessLooksReady(_ status: ProvidersResponse) -> Bool {
         let protectedSources: Set<String> = ["photos", "notes", "mail", "messages", "safari"]
         return status.providers
             .filter { protectedSources.contains($0.source) }
@@ -947,13 +957,14 @@ private final class RecentSearchCellView: NSTableCellView {
 @MainActor
 private final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
     private let updateStatusLabel = NSTextField(labelWithString: "Updates have not been checked.")
+    private let versionLabel = NSTextField(labelWithString: SettingsWindowController.currentVersionText)
     private let launchAtStartupButton = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let onManagePermissions: () -> Void
 
     init(onManagePermissions: @escaping () -> Void) {
         self.onManagePermissions = onManagePermissions
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 440, height: 286),
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 342),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -1039,12 +1050,17 @@ private final class SettingsWindowController: NSWindowController, NSToolbarDeleg
         let separator = NSBox()
         separator.boxType = .separator
         let launchRow = buildLaunchAtStartupRow()
+        let versionSeparator = NSBox()
+        versionSeparator.boxType = .separator
+        let versionRow = buildVersionRow()
         let permissionsSeparator = NSBox()
         permissionsSeparator.boxType = .separator
         let permissionsRow = buildManagePermissionsRow()
         stack.addArrangedSubview(updatesRow)
         stack.addArrangedSubview(separator)
         stack.addArrangedSubview(launchRow)
+        stack.addArrangedSubview(versionSeparator)
+        stack.addArrangedSubview(versionRow)
         stack.addArrangedSubview(permissionsSeparator)
         stack.addArrangedSubview(permissionsRow)
 
@@ -1056,8 +1072,10 @@ private final class SettingsWindowController: NSWindowController, NSToolbarDeleg
             stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             updatesRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             launchRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            versionRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             permissionsRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             separator.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -52),
+            versionSeparator.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -52),
             permissionsSeparator.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -52)
         ])
 
@@ -1102,6 +1120,26 @@ private final class SettingsWindowController: NSWindowController, NSToolbarDeleg
             subtitle: "Review local data access and Full Disk Access.",
             accessoryView: button
         )
+    }
+
+    private func buildVersionRow() -> NSView {
+        versionLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        versionLabel.textColor = .secondaryLabelColor
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.widthAnchor.constraint(equalToConstant: 1).isActive = true
+        return buildGroupedRow(
+            symbolName: "info.circle",
+            title: "Version",
+            detailView: versionLabel,
+            accessoryView: spacer
+        )
+    }
+
+    private static var currentVersionText: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+        return "\(version) (\(build))"
     }
 
     private func buildGroupedRow(symbolName: String, title: String, subtitle: String? = nil, detailView: NSView? = nil, accessoryView: NSView) -> NSView {
@@ -1292,6 +1330,8 @@ private enum UpdateInstaller {
         switch downloadedURL.pathExtension.lowercased() {
         case "zip":
             try await installZip(downloadedURL)
+        case "dmg":
+            try await installDmg(downloadedURL)
         default:
             NSWorkspace.shared.open(downloadedURL)
         }
@@ -1315,14 +1355,39 @@ private enum UpdateInstaller {
             throw NSError(domain: "LimelightUpdate", code: 1, userInfo: [NSLocalizedDescriptionKey: "Downloaded update did not contain an app bundle."])
         }
 
+        try await installApp(appURL, workDirectory: workDirectory)
+    }
+
+    private static func installDmg(_ dmgURL: URL) async throws {
+        let workDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("LimelightUpdate-\(UUID().uuidString)")
+        let mountURL = workDirectory.appendingPathComponent("mount")
+        try FileManager.default.createDirectory(at: mountURL, withIntermediateDirectories: true)
+        try run("/usr/bin/hdiutil", arguments: ["attach", "-readonly", "-nobrowse", "-mountpoint", mountURL.path, dmgURL.path])
+
+        guard let mountedAppURL = findApp(in: mountURL) else {
+            try? run("/usr/bin/hdiutil", arguments: ["detach", mountURL.path])
+            throw NSError(domain: "LimelightUpdate", code: 1, userInfo: [NSLocalizedDescriptionKey: "Downloaded update did not contain an app bundle."])
+        }
+
+        let appURL = workDirectory.appendingPathComponent(mountedAppURL.lastPathComponent)
+        try run("/usr/bin/ditto", arguments: [mountedAppURL.path, appURL.path])
+        try run("/usr/bin/hdiutil", arguments: ["detach", mountURL.path])
+        try await installApp(appURL, workDirectory: workDirectory)
+    }
+
+    private static func installApp(_ appURL: URL, workDirectory: URL) async throws {
         let currentAppURL = URL(fileURLWithPath: Bundle.main.bundlePath)
+        let executableName = Bundle(url: appURL)?.object(forInfoDictionaryKey: "CFBundleExecutable") as? String ?? "Limelight"
+        let executableURL = currentAppURL
+            .appendingPathComponent("Contents/MacOS")
+            .appendingPathComponent(executableName)
         let scriptURL = workDirectory.appendingPathComponent("install.sh")
         let script = """
         #!/bin/zsh
         sleep 1
         rm -rf "\(currentAppURL.path)"
         /usr/bin/ditto "\(appURL.path)" "\(currentAppURL.path)"
-        /usr/bin/open -gj "\(currentAppURL.path)" --args --host 127.0.0.1 --port 8765
+        "\(executableURL.path)" --host 127.0.0.1 --port 8765 &
         rm -rf "\(workDirectory.path)"
         """
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
@@ -1418,7 +1483,7 @@ private enum LaunchAtStartupController {
     }
 
     static var isEnabled: Bool {
-        FileManager.default.fileExists(atPath: launchAgentURL.path)
+        launchAgentMatchesCurrentApp()
     }
 
     static func setEnabled(_ enabled: Bool) throws {
@@ -1435,7 +1500,10 @@ private enum LaunchAtStartupController {
     }
 
     private static func install() throws {
-        let appPath = Bundle.main.bundlePath
+        guard let executableURL = Bundle.main.executableURL else {
+            throw NSError(domain: "LimelightLaunchAtStartup", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not resolve the Limelight executable path."])
+        }
+        try runLaunchctl(["bootout", "gui/\(getuid())", launchAgentURL.path], allowFailure: true)
         let plist = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1445,10 +1513,7 @@ private enum LaunchAtStartupController {
             <string>\(label)</string>
             <key>ProgramArguments</key>
             <array>
-                <string>/usr/bin/open</string>
-                <string>-gj</string>
-                <string>\(appPath)</string>
-                <string>--args</string>
+                <string>\(executableURL.path)</string>
                 <string>--host</string>
                 <string>127.0.0.1</string>
                 <string>--port</string>
@@ -1464,6 +1529,17 @@ private enum LaunchAtStartupController {
         try FileManager.default.createDirectory(at: launchAgentURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try plist.write(to: launchAgentURL, atomically: true, encoding: .utf8)
         try runLaunchctl(["bootstrap", "gui/\(getuid())", launchAgentURL.path], allowFailure: true)
+    }
+
+    private static func launchAgentMatchesCurrentApp() -> Bool {
+        guard FileManager.default.fileExists(atPath: launchAgentURL.path),
+              let executablePath = Bundle.main.executableURL?.path,
+              let plist = NSDictionary(contentsOf: launchAgentURL) as? [String: Any],
+              let arguments = plist["ProgramArguments"] as? [String],
+              arguments.first == executablePath else {
+            return false
+        }
+        return true
     }
 
     private static func uninstall() throws {

@@ -31,7 +31,7 @@ The app is installed to:
 Grant Full Disk Access to that app, then launch it:
 
 ```sh
-open -gj "$HOME/Applications/Limelight.app" --args --host 127.0.0.1 --port 8765
+"$HOME/Applications/Limelight.app/Contents/MacOS/Limelight" --host 127.0.0.1 --port 8765
 ```
 
 When launched from the app bundle, Limelight runs as a menu bar app. The menu shows service status, provider readiness, recent searches, and permission shortcuts.
