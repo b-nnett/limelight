@@ -7,6 +7,7 @@ import QuartzCore
 
 @MainActor
 final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
+    private static let reopenPermissionsOnNextLaunchKey = "LimelightReopenPermissionsOnNextLaunch"
     private let arguments: Arguments
     private var server: SpotlightHTTPServer?
     private var statusItem: NSStatusItem?
@@ -27,6 +28,10 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !quitIfRunningFromReadOnlyVolume() else {
+            return
+        }
+
         NSApp.setActivationPolicy(.accessory)
         NSApp.applicationIconImage = Self.appIcon()
         installStatusItem()
@@ -43,8 +48,31 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if permissionsWindow?.window?.isVisible == true {
+            UserDefaults.standard.set(true, forKey: Self.reopenPermissionsOnNextLaunchKey)
+        }
         statusRefreshTimer?.invalidate()
         server?.stop()
+    }
+
+    private func quitIfRunningFromReadOnlyVolume() -> Bool {
+        let bundleURL = Bundle.main.bundleURL
+        guard bundleURL.path.hasPrefix("/Volumes/"),
+              let values = try? bundleURL.resourceValues(forKeys: [.volumeIsReadOnlyKey]),
+              values.volumeIsReadOnly == true else {
+            return false
+        }
+
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Move Limelight to Applications"
+        alert.informativeText = "Limelight is running from a mounted disk image. Drag Limelight to your Applications folder, eject the disk image, then open Limelight from Applications."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Quit")
+        alert.runModal()
+        NSApp.terminate(nil)
+        return true
     }
 
     private func installStatusItem() {
@@ -205,6 +233,14 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showPermissionsOnLaunchIfNeeded() {
+        if UserDefaults.standard.bool(forKey: Self.reopenPermissionsOnNextLaunchKey) {
+            UserDefaults.standard.removeObject(forKey: Self.reopenPermissionsOnNextLaunchKey)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+                self?.openPermissions()
+            }
+            return
+        }
+
         if let lastProviderStatus,
            !PermissionsWindowController.fullDiskAccessLooksReady(lastProviderStatus) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
@@ -253,6 +289,7 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openFullDiskAccess() {
+        UserDefaults.standard.set(true, forKey: "LimelightReopenPermissionsOnNextLaunch")
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
     }
 
@@ -435,6 +472,7 @@ final class PermissionsWindowController: NSWindowController, NSToolbarDelegate {
     }
 
     @objc private func openFullDiskAccess() {
+        UserDefaults.standard.set(true, forKey: "LimelightReopenPermissionsOnNextLaunch")
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
     }
 
