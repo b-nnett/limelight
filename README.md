@@ -1,6 +1,6 @@
 # Limelight
 
-Limelight gives Codex and local agents a private, searchable window into your Mac's context: files, photos, mail, messages, notes, calendar, contacts, reminders, and Safari history.
+Limelight gives Codex and local agents a searchable window into your Mac's context: files, photos, mail, messages, notes, calendar, contacts, reminders, and Safari history.
 
 It runs locally on your Mac and exposes a small loopback HTTP API so any agent or model can utilise it.
 
