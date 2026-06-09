@@ -4,6 +4,8 @@ Limelight gives Codex and local agents a private, searchable window into your Ma
 
 It runs locally on your Mac and exposes a small loopback HTTP API so agents can better understand your work and life without Limelight sending your data off-device.
 
+![Limelight preview](docs/assets/limelight-hero.png)
+
 ## Contents
 
 - [Install](#install)
