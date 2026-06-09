@@ -3,7 +3,12 @@ set -euo pipefail
 
 BASE_URL="${SPOTLIGHT_INDEX_URL:-http://127.0.0.1:8765}"
 AUTH_TOKEN="${SPOTLIGHT_INDEX_AUTH_TOKEN:-}"
+AUTH_TOKEN_FILE="${SPOTLIGHT_INDEX_AUTH_TOKEN_FILE:-$HOME/Library/Application Support/Limelight/auth-token}"
 APP_PATH="${SPOTLIGHT_INDEX_APP_DIR:-$HOME/Applications/Limelight.app}"
+
+if [[ -z "$AUTH_TOKEN" && -r "$AUTH_TOKEN_FILE" ]]; then
+  AUTH_TOKEN="$(tr -d '\r\n' < "$AUTH_TOKEN_FILE")"
+fi
 
 curl_args=(-sS)
 if [[ -n "$AUTH_TOKEN" ]]; then

@@ -14,7 +14,15 @@ The local service now resolves the acceptance matrix with real data when launche
 
 The app uses bundle id `com.bennett.spotlight-index.local`. Mail, Notes, Safari, and other protected stores depend on macOS privacy grants for that bundle identity. Rebuilds should use stable local signing so Full Disk Access survives normal installs.
 
-## Todo
+## Release Readiness
+
+1. [x] Bind the HTTP server to the configured host instead of all interfaces.
+2. [x] Require bearer-token auth for installed app bundles by default.
+3. [x] Remove user-specific paths from runtime permission guidance.
+4. [x] Add a documented release DMG packaging and notarization path.
+5. [x] Run the updated full release validation on a freshly installed build.
+
+## Completed Project Todo
 
 1. [x] Build a real macOS menu bar app.
    - Show service status, provider readiness, and recent searches.

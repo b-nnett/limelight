@@ -83,6 +83,8 @@ Run tests:
 swift test
 ```
 
+Build a signed release DMG with `scripts/package-release.sh`; see [Development](docs/DEVELOPMENT.md#release-dmg) for signing and notarization setup.
+
 See [Development](docs/DEVELOPMENT.md) for validation scripts, acceptance probes, and local app build instructions.
 
 ## Documentation

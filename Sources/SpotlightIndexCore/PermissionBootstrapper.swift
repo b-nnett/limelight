@@ -35,7 +35,7 @@ enum PermissionBootstrapper {
                 source: source.rawValue,
                 status: "manual",
                 message: "macOS does not expose a programmatic Full Disk Access prompt for this source.",
-                setupHint: "Open Full Disk Access and grant /Users/bennett/Applications/Limelight.app."
+                setupHint: fullDiskAccessHint()
             )
         case .files, .photos:
             return PermissionActionRecord(
@@ -45,6 +45,13 @@ enum PermissionBootstrapper {
                 setupHint: nil
             )
         }
+    }
+
+    private static func fullDiskAccessHint() -> String {
+        if Bundle.main.bundlePath.hasSuffix(".app") {
+            return "Open Full Disk Access and grant \(Bundle.main.bundlePath)."
+        }
+        return "Open Full Disk Access and grant the Limelight app bundle."
     }
 
     private static func requestContacts() -> PermissionActionRecord {

@@ -8,6 +8,7 @@ APP_DIR="${SPOTLIGHT_INDEX_APP_DIR:-$HOME/Applications/$APP_NAME.app}"
 HOST="${SPOTLIGHT_INDEX_HOST:-127.0.0.1}"
 PORT="${SPOTLIGHT_INDEX_PORT:-8765}"
 AUTH_TOKEN="${SPOTLIGHT_INDEX_AUTH_TOKEN:-}"
+AUTH_TOKEN_FILE="${SPOTLIGHT_INDEX_AUTH_TOKEN_FILE:-$HOME/Library/Application Support/Limelight/auth-token}"
 DEFAULT_CODESIGN_IDENTITY="Codex++ Local Signing"
 REQUESTED_CODESIGN_IDENTITY="${SPOTLIGHT_INDEX_CODESIGN_IDENTITY:-}"
 AUTO_CREATE_SIGNING_IDENTITY="${SPOTLIGHT_INDEX_AUTO_CREATE_SIGNING_IDENTITY:-1}"
@@ -32,7 +33,11 @@ Environment:
   SPOTLIGHT_INDEX_HOST     Host passed to the service, default 127.0.0.1.
   SPOTLIGHT_INDEX_PORT     Port passed to the service, default 8765.
   SPOTLIGHT_INDEX_AUTH_TOKEN
-                         Optional bearer token required by all endpoints except /health.
+                         Bearer token required by all endpoints except /health. If unset,
+                         a token is generated or reused from:
+                           ~/Library/Application Support/Limelight/auth-token
+  SPOTLIGHT_INDEX_AUTH_TOKEN_FILE
+                         Override the generated token file path.
   SPOTLIGHT_INDEX_CODESIGN_IDENTITY
                          Code signing identity to use. Defaults to "Codex++ Local Signing"
                          when present, then the first valid local code signing identity,
@@ -73,6 +78,24 @@ resolve_codesign_identity() {
   printf '%s\n' "-"
 }
 
+ensure_auth_token() {
+  if [[ -z "$AUTH_TOKEN" && -r "$AUTH_TOKEN_FILE" ]]; then
+    AUTH_TOKEN="$(tr -d '\r\n' < "$AUTH_TOKEN_FILE")"
+  fi
+
+  if [[ -z "$AUTH_TOKEN" ]]; then
+    AUTH_TOKEN="$(/usr/bin/openssl rand -hex 32)"
+  fi
+
+  mkdir -p "$(dirname "$AUTH_TOKEN_FILE")"
+  local previous_umask
+  previous_umask="$(umask)"
+  umask 077
+  printf '%s\n' "$AUTH_TOKEN" > "$AUTH_TOKEN_FILE"
+  umask "$previous_umask"
+  chmod 600 "$AUTH_TOKEN_FILE"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --launch-agent)
@@ -98,6 +121,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$ROOT_DIR"
+ensure_auth_token
 swift build -c release --product spotlight-index
 
 rm -rf "$APP_DIR"
@@ -194,12 +218,6 @@ if [[ "$INSTALL_LAUNCH_AGENT" -eq 1 ]]; then
 		<string>--port</string>
 		<string>$PORT</string>
 PLIST
-  if [[ -n "$AUTH_TOKEN" ]]; then
-    cat >> "$AGENT_PLIST" <<PLIST
-		<string>--auth-token</string>
-		<string>$AUTH_TOKEN</string>
-PLIST
-  fi
   cat >> "$AGENT_PLIST" <<PLIST
 	</array>
 	<key>RunAtLoad</key>
@@ -224,14 +242,7 @@ fi
 echo "Installed $APP_DIR"
 echo "Bundle identifier: $BUNDLE_ID"
 echo "Code signing identity: $CODESIGN_IDENTITY"
-if [[ -n "$AUTH_TOKEN" ]]; then
-  echo "HTTP auth: enabled"
-else
-  echo "HTTP auth: disabled"
-fi
+echo "HTTP auth: enabled"
+echo "HTTP auth token file: $AUTH_TOKEN_FILE"
 echo "Grant Full Disk Access to this app bundle, then launch it with:"
-if [[ -n "$AUTH_TOKEN" ]]; then
-  echo "  open -gj \"$APP_DIR\" --args --host \"$HOST\" --port \"$PORT\" --auth-token \"<token>\""
-else
-  echo "  open -gj \"$APP_DIR\" --args --host \"$HOST\" --port \"$PORT\""
-fi
+echo "  open -gj \"$APP_DIR\" --args --host \"$HOST\" --port \"$PORT\""

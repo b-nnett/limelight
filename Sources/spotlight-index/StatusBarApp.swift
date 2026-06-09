@@ -1413,7 +1413,9 @@ private enum GitHubReleaseChecker {
 }
 
 private enum LaunchAtStartupController {
-    private static let label = "com.bennett.spotlight-index.local"
+    private static var label: String {
+        Bundle.main.bundleIdentifier ?? "com.bennett.limelight"
+    }
 
     static var isEnabled: Bool {
         FileManager.default.fileExists(atPath: launchAgentURL.path)

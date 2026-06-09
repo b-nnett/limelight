@@ -27,7 +27,9 @@ public final class SpotlightHTTPServer: @unchecked Sendable {
     }
 
     public func start() throws {
-        let listener = try NWListener(using: .tcp, on: port)
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: host, port: port)
+        let listener = try NWListener(using: parameters)
         listener.service = nil
         listener.newConnectionHandler = { [service, onSearch, authToken] connection in
             HTTPConnectionHandler(connection: connection, service: service, onSearch: onSearch, authToken: authToken).start()

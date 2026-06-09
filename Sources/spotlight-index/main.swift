@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import SpotlightIndexCore
 
 struct Arguments {
@@ -36,10 +37,51 @@ func parseArguments(_ values: [String]) -> Arguments {
     return arguments
 }
 
-let arguments = parseArguments(CommandLine.arguments)
-
 #if canImport(AppKit)
 let launchedFromAppBundle = Bundle.main.bundlePath.hasSuffix(".app")
+#else
+let launchedFromAppBundle = false
+#endif
+
+func installedAppAuthToken() throws -> String? {
+    guard launchedFromAppBundle else {
+        return nil
+    }
+    let tokenURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/Limelight/auth-token")
+    if let token = try? String(contentsOf: tokenURL, encoding: .utf8)
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+       !token.isEmpty {
+        return token
+    }
+
+    let token = try generateAuthToken()
+    try FileManager.default.createDirectory(at: tokenURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try token.write(to: tokenURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tokenURL.path)
+    return token
+}
+
+func generateAuthToken() throws -> String {
+    var bytes = [UInt8](repeating: 0, count: 32)
+    let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+    guard status == errSecSuccess else {
+        throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: [NSLocalizedDescriptionKey: "failed to generate local auth token"])
+    }
+    return bytes.map { String(format: "%02x", $0) }.joined()
+}
+
+var arguments = parseArguments(CommandLine.arguments)
+if arguments.authToken == nil {
+    do {
+        arguments.authToken = try installedAppAuthToken()
+    } catch {
+        fputs("failed to prepare Limelight auth token: \(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
+}
+
+#if canImport(AppKit)
 if arguments.menuBar == true || (arguments.menuBar == nil && launchedFromAppBundle) {
     runMenuBarApp(arguments: arguments)
     exit(0)

@@ -12,6 +12,8 @@ After installing:
 
 Once running, Limelight listens on `127.0.0.1:8765` by default.
 
+Release DMGs are produced with [scripts/package-release.sh](../scripts/package-release.sh). See [Development](DEVELOPMENT.md#release-dmg) for signing and notarization details.
+
 ## Local Development Install
 
 For protected app stores, macOS permissions are tied to a stable app identity. The repo includes an installer that builds and signs a local menu bar app with bundle id `com.bennett.spotlight-index.local`:
@@ -56,7 +58,13 @@ scripts/install-local-app.sh --launch-agent
 
 ## Authentication
 
-By default, the service binds to `127.0.0.1` without authentication. Add an optional bearer token for local integrations:
+The pre-built and local app-bundle installs require a bearer token for every endpoint except `/health`. The local installer creates or reuses this token file:
+
+```text
+~/Library/Application Support/Limelight/auth-token
+```
+
+Headless development runs can opt into the same guard with:
 
 ```sh
 SPOTLIGHT_INDEX_AUTH_TOKEN="local-token" swift run spotlight-index --host 127.0.0.1 --port 8765
@@ -68,4 +76,4 @@ Then call protected endpoints with:
 curl -H "Authorization: Bearer local-token" http://127.0.0.1:8765/v1/providers
 ```
 
-When installing a LaunchAgent, set `SPOTLIGHT_INDEX_AUTH_TOKEN` during install to persist the token in the LaunchAgent arguments.
+The validation scripts read `SPOTLIGHT_INDEX_AUTH_TOKEN` first, then fall back to the token file. LaunchAgents do not store the token in process arguments.
