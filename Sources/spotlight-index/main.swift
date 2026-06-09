@@ -57,8 +57,13 @@ func installedAppAuthToken() throws -> String? {
 
     let token = try generateAuthToken()
     try FileManager.default.createDirectory(at: tokenURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try token.write(to: tokenURL, atomically: true, encoding: .utf8)
-    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tokenURL.path)
+    guard FileManager.default.createFile(
+        atPath: tokenURL.path,
+        contents: Data((token + "\n").utf8),
+        attributes: [.posixPermissions: 0o600]
+    ) else {
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(EIO), userInfo: [NSLocalizedDescriptionKey: "failed to write local auth token"])
+    }
     return token
 }
 

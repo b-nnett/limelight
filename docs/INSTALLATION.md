@@ -58,7 +58,7 @@ scripts/install-local-app.sh --launch-agent
 
 ## Authentication
 
-The pre-built and local app-bundle installs require a bearer token for every endpoint except `/health`. The local installer creates or reuses this token file:
+The pre-built and local app-bundle installs require a bearer token for every endpoint except `/health`. Limelight creates or reuses this token file on app-bundle launch:
 
 ```text
 ~/Library/Application Support/Limelight/auth-token
