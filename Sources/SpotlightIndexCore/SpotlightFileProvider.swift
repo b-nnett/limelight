@@ -10,6 +10,9 @@ struct SpotlightFileProvider: SearchProvider {
         guard let query = MDQueryCreate(kCFAllocatorDefault, built.expression as CFString, nil, nil) else {
             throw SpotlightSearchError.queryCreationFailed
         }
+        if !built.scopes.isEmpty {
+            MDQuerySetSearchScope(query, built.scopes as CFArray, 0)
+        }
 
         guard MDQueryExecute(query, CFOptionFlags(kMDQuerySynchronous.rawValue)) else {
             throw SpotlightSearchError.queryExecutionFailed

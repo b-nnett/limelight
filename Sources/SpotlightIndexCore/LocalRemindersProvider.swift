@@ -14,7 +14,7 @@ struct LocalRemindersProvider: SearchProvider {
             return []
         }
 
-        if let eventKitResults = try eventKitResults(context), !eventKitResults.isEmpty {
+        if let eventKitResults = try eventKitResults(context) {
             return eventKitResults
         }
 

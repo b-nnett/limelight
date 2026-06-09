@@ -27,7 +27,9 @@ Mail and Safari also try CoreSpotlight app-entity queries before direct private-
 Notes search returns snippets. When the Notes private store is readable, load the full note with:
 
 ```sh
-curl -s 'http://127.0.0.1:8765/v1/item?source=notes&id=NOTE-ID'
+TOKEN="$(cat "$HOME/Library/Application Support/Limelight/auth-token")"
+curl -s -H "Authorization: Bearer $TOKEN" \
+  'http://127.0.0.1:8765/v1/item?source=notes&id=NOTE-ID'
 ```
 
 `NOTE-ID` can be the search result `id`, `metadata.noteID`, or a Notes deep link containing an `identifier` query parameter. Loaded Notes items include `metadata.body` and, when Apple stores a durable identifier, a `notes://showNote?...` URL that can be passed to `/v1/open`.
@@ -37,7 +39,8 @@ curl -s 'http://127.0.0.1:8765/v1/item?source=notes&id=NOTE-ID'
 Inspect live provider readiness:
 
 ```sh
-curl -s http://127.0.0.1:8765/v1/providers | jq
+TOKEN="$(cat "$HOME/Library/Application Support/Limelight/auth-token")"
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/v1/providers | jq
 ```
 
 Provider readiness statuses include `ready`, `partial`, `needs_permission`, and `missing`, with setup hints for protected stores.

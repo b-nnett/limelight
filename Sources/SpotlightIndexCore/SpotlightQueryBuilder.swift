@@ -131,7 +131,7 @@ public enum SpotlightQueryBuilder {
             return nil
         }
 
-        let literal = spotlightLiteral("*\(sanitized)*")
+        let literal = spotlightLiteral("*\(sanitized)*", modifiers: "cd")
         return [
             "kMDItemDisplayName == \(literal)",
             "kMDItemFSName == \(literal)",
@@ -156,7 +156,7 @@ public enum SpotlightQueryBuilder {
             .joined(separator: " ")
     }
 
-    private static func spotlightLiteral(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'"))'"
+    private static func spotlightLiteral(_ value: String, modifiers: String = "") -> String {
+        "'\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'"))'\(modifiers)"
     }
 }

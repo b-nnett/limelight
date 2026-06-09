@@ -76,6 +76,14 @@ func generateAuthToken() throws -> String {
     return bytes.map { String(format: "%02x", $0) }.joined()
 }
 
+func hostIsLoopback(_ host: String) -> Bool {
+    let normalized = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return normalized == "localhost"
+        || normalized == "::1"
+        || normalized == "[::1]"
+        || normalized.hasPrefix("127.")
+}
+
 var arguments = parseArguments(CommandLine.arguments)
 if arguments.authToken == nil {
     do {
@@ -84,6 +92,11 @@ if arguments.authToken == nil {
         fputs("failed to prepare Limelight auth token: \(error.localizedDescription)\n", stderr)
         exit(1)
     }
+}
+
+if arguments.authToken == nil && !hostIsLoopback(arguments.host) {
+    fputs("refusing to start unauthenticated Limelight server on non-loopback host \(arguments.host). Set SPOTLIGHT_INDEX_AUTH_TOKEN or pass --auth-token.\n", stderr)
+    exit(1)
 }
 
 #if canImport(AppKit)

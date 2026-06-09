@@ -41,7 +41,7 @@ enum ProviderError: Error, LocalizedError {
 
 enum ProtectedStore {
     static func privacyMessage(source: String, path: String) -> String {
-        "\(source) store exists but is not readable at \(path). Grant Full Disk Access to the process running spotlight-index, then retry."
+        "\(source) store exists but is not readable at \(path). Grant Full Disk Access to Limelight, then retry."
     }
 
     static func isUnreadableExistingPath(_ url: URL) -> Bool {

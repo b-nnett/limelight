@@ -14,9 +14,9 @@ struct LocalCalendarProvider: SearchProvider {
         guard context.types.isEmpty else {
             return []
         }
-        let frameworkResults = try frameworkEventResults(context)
-        if !frameworkResults.isEmpty {
-            return frameworkResults
+        if let frameworkResults = try frameworkEventResults(context) {
+            let birthdayResults = try contactBirthdayResults(context)
+            return Array((frameworkResults + birthdayResults).prefix(context.limit))
         }
 
         if FileManager.default.fileExists(atPath: calendarDBPath) {
@@ -71,10 +71,10 @@ struct LocalCalendarProvider: SearchProvider {
         }
     }
 
-    private func frameworkEventResults(_ context: ProviderSearchContext) throws -> [SearchResultRecord] {
+    private func frameworkEventResults(_ context: ProviderSearchContext) throws -> [SearchResultRecord]? {
         let status = EKEventStore.authorizationStatus(for: .event)
         guard Self.canReadEvents(status) else {
-            return []
+            return nil
         }
 
         let store = EKEventStore()
@@ -157,7 +157,7 @@ struct LocalCalendarProvider: SearchProvider {
 
     private static func canReadEvents(_ status: EKAuthorizationStatus) -> Bool {
         if #available(macOS 14.0, *) {
-            return status == .fullAccess || status == .writeOnly
+            return status == .fullAccess
         }
         return status.rawValue == 3
     }

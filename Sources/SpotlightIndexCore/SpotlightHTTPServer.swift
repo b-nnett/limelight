@@ -51,6 +51,9 @@ private final class HTTPConnectionHandler: @unchecked Sendable {
     private let authToken: String?
     private var buffer = Data()
     private var retainSelf: HTTPConnectionHandler?
+    private static let maxHeaderBytes = 32 * 1024
+    private static let maxBodyBytes = 10 * 1024 * 1024
+    private static let maxRequestBytes = maxHeaderBytes + maxBodyBytes
     private let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -81,11 +84,21 @@ private final class HTTPConnectionHandler: @unchecked Sendable {
                 self.buffer.append(data)
             }
 
-            if let request = HTTPRequest(data: self.buffer) {
+            if self.buffer.count > Self.maxRequestBytes {
+                self.send(status: 413, body: ErrorResponse(error: "request body is too large"))
+                return
+            }
+
+            switch HTTPRequest.parse(data: self.buffer, maxHeaderBytes: Self.maxHeaderBytes, maxBodyBytes: Self.maxBodyBytes) {
+            case .complete(let request):
                 self.handle(request)
-            } else if isComplete || error != nil {
+            case .payloadTooLarge:
+                self.send(status: 413, body: ErrorResponse(error: "request body is too large"))
+            case .badRequest:
                 self.send(status: 400, body: ErrorResponse(error: "malformed HTTP request"))
-            } else {
+            case .incomplete where isComplete || error != nil:
+                self.send(status: 400, body: ErrorResponse(error: "malformed HTTP request"))
+            case .incomplete:
                 self.receive()
             }
         }
@@ -230,24 +243,34 @@ private struct HTTPRequest {
     let headers: [String: String]
     let body: Data
 
-    init?(data: Data) {
+    enum ParseResult {
+        case complete(HTTPRequest)
+        case incomplete
+        case badRequest
+        case payloadTooLarge
+    }
+
+    static func parse(data: Data, maxHeaderBytes: Int, maxBodyBytes: Int) -> ParseResult {
         guard let headerEnd = data.range(of: Data("\r\n\r\n".utf8)) else {
-            return nil
+            return data.count > maxHeaderBytes ? .payloadTooLarge : .incomplete
+        }
+        guard headerEnd.lowerBound <= maxHeaderBytes else {
+            return .payloadTooLarge
         }
 
         let headerData = data[..<headerEnd.lowerBound]
         guard let headerString = String(data: headerData, encoding: .utf8) else {
-            return nil
+            return .badRequest
         }
 
         let lines = headerString.components(separatedBy: "\r\n")
         guard let requestLine = lines.first else {
-            return nil
+            return .badRequest
         }
 
         let requestParts = requestLine.split(separator: " ", maxSplits: 2).map(String.init)
         guard requestParts.count >= 2 else {
-            return nil
+            return .badRequest
         }
 
         var headers: [String: String] = [:]
@@ -257,27 +280,50 @@ private struct HTTPRequest {
             }
             let key = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
+            if key == "content-length", let existing = headers[key], existing != value {
+                return .badRequest
+            }
             headers[key] = value
         }
 
-        let contentLength = Int(headers["content-length"] ?? "0") ?? 0
+        let contentLengthValue = headers["content-length"] ?? "0"
+        guard let contentLength = Int(contentLengthValue), contentLength >= 0 else {
+            return .badRequest
+        }
+        guard contentLength <= maxBodyBytes else {
+            return .payloadTooLarge
+        }
         let bodyStart = headerEnd.upperBound
         guard data.count >= bodyStart + contentLength else {
-            return nil
+            return .incomplete
         }
 
         let rawTarget = requestParts[1]
-        let components = URLComponents(string: "http://127.0.0.1\(rawTarget)")
-        self.method = requestParts[0]
-        self.path = components?.path ?? rawTarget
-        self.queryItems = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).compactMap { item in
+        guard let components = URLComponents(string: "http://127.0.0.1\(rawTarget)") else {
+            return .badRequest
+        }
+        var queryItems: [String: String] = [:]
+        for item in components.queryItems ?? [] {
             guard let value = item.value else {
-                return nil
+                continue
             }
-            return (item.name, value)
-        })
+            queryItems[item.name] = value
+        }
+        return .complete(HTTPRequest(
+            method: requestParts[0],
+            path: components.path,
+            queryItems: queryItems,
+            headers: headers,
+            body: Data(data[bodyStart..<(bodyStart + contentLength)])
+        ))
+    }
+
+    private init(method: String, path: String, queryItems: [String: String], headers: [String: String], body: Data) {
+        self.method = method
+        self.path = path
+        self.queryItems = queryItems
         self.headers = headers
-        self.body = Data(data[bodyStart..<(bodyStart + contentLength)])
+        self.body = body
     }
 }
 
@@ -292,6 +338,8 @@ private enum HTTPStatus {
             "Not Found"
         case 401:
             "Unauthorized"
+        case 413:
+            "Payload Too Large"
         default:
             "Internal Server Error"
         }

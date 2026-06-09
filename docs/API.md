@@ -2,6 +2,12 @@
 
 Limelight exposes a local HTTP API on `127.0.0.1:8765` by default.
 
+Installed app bundles require bearer-token auth on every endpoint except `/health`. The token is stored at:
+
+```sh
+TOKEN="$(cat "$HOME/Library/Application Support/Limelight/auth-token")"
+```
+
 ## Endpoints
 
 - `GET /health`
@@ -29,6 +35,7 @@ Search files:
 
 ```sh
 curl -s http://127.0.0.1:8765/v1/search \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"query":"Codex","sources":["files"],"types":["application"],"onlyIn":["/Applications"],"limit":5}'
 ```
@@ -37,6 +44,7 @@ Search Photos:
 
 ```sh
 curl -s http://127.0.0.1:8765/v1/search \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"query":"bennett","sources":["photos"],"types":["image"],"limit":10}'
 ```
@@ -47,6 +55,7 @@ Request permission prompts or setup guidance:
 
 ```sh
 curl -s http://127.0.0.1:8765/v1/permissions/request \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"sources":["contacts","calendar","reminders","mail","notes","safari"]}'
 ```
@@ -58,7 +67,9 @@ Contacts, Calendar, and Reminders can trigger framework permission prompts. Mail
 Fetch a Photos thumbnail:
 
 ```sh
-curl -o thumbnail.jpg 'http://127.0.0.1:8765/v1/photos/thumbnail?id=PHOTOS-ASSET-UUID'
+curl -H "Authorization: Bearer $TOKEN" \
+  -o thumbnail.jpg \
+  'http://127.0.0.1:8765/v1/photos/thumbnail?id=PHOTOS-ASSET-UUID'
 ```
 
 The thumbnail endpoint serves only readable derivative files inside the local Photos library.
@@ -68,25 +79,29 @@ The thumbnail endpoint serves only readable derivative files inside the local Ph
 Load file metadata:
 
 ```sh
-curl -s 'http://127.0.0.1:8765/v1/item?path=/Applications/Safari.app'
+curl -s -H "Authorization: Bearer $TOKEN" \
+  'http://127.0.0.1:8765/v1/item?path=/Applications/Safari.app'
 ```
 
 Load a provider-backed item from a search result. For Notes, use the result `id` or `metadata.noteID`; item lookup returns the full decoded note body in `item.metadata.body` when the private store is readable:
 
 ```sh
-curl -s 'http://127.0.0.1:8765/v1/item?source=notes&id=NOTE-ID'
+curl -s -H "Authorization: Bearer $TOKEN" \
+  'http://127.0.0.1:8765/v1/item?source=notes&id=NOTE-ID'
 ```
 
 For Mail, use the search result `id` such as `mail:241231`; item lookup returns bounded plain text in `item.metadata.bodyExcerpt` and `item.metadata.bodyText`:
 
 ```sh
-curl -s 'http://127.0.0.1:8765/v1/item?source=mail&id=mail:241231'
+curl -s -H "Authorization: Bearer $TOKEN" \
+  'http://127.0.0.1:8765/v1/item?source=mail&id=mail:241231'
 ```
 
 Open a local file, URL, or provider item on the Mac running Limelight:
 
 ```sh
 curl -s http://127.0.0.1:8765/v1/open \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"source":"notes","id":"NOTE-ID"}'
 ```
@@ -105,6 +120,7 @@ Example: find a passport number from Photos results and save it locally:
 
 ```sh
 curl -s http://127.0.0.1:8765/v1/extract \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
     "entityTypes":["passport_number"],
@@ -116,8 +132,8 @@ curl -s http://127.0.0.1:8765/v1/extract \
 
 ## Authentication
 
-When auth is enabled, include the bearer token on every endpoint except `/health`:
+Headless development runs can opt into the same auth behavior with `SPOTLIGHT_INDEX_AUTH_TOKEN` or `--auth-token`. Include the bearer token on every endpoint except `/health`:
 
 ```sh
-curl -H "Authorization: Bearer local-token" http://127.0.0.1:8765/v1/providers
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/v1/providers
 ```

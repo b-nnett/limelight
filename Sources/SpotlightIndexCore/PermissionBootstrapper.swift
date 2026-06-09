@@ -9,7 +9,7 @@ enum PermissionBootstrapper {
     }
 
     private static func requestedSources(_ names: [String]?) throws -> [SearchSource] {
-        let names = names ?? ["contacts", "calendar", "reminders", "notes", "mail", "messages", "safari"]
+        let names = names ?? ["contacts", "calendar", "reminders", "photos", "notes", "mail", "messages", "safari"]
         var sources: [SearchSource] = []
         for name in names {
             guard let source = SearchSource(rawValue: name) else {
@@ -30,14 +30,14 @@ enum PermissionBootstrapper {
             return requestEvents()
         case .reminders:
             return requestReminders()
-        case .notes, .mail, .messages, .safari:
+        case .photos, .notes, .mail, .messages, .safari:
             return PermissionActionRecord(
                 source: source.rawValue,
                 status: "manual",
                 message: "macOS does not expose a programmatic Full Disk Access prompt for this source.",
                 setupHint: fullDiskAccessHint()
             )
-        case .files, .photos:
+        case .files:
             return PermissionActionRecord(
                 source: source.rawValue,
                 status: "not_required",

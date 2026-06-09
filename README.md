@@ -39,7 +39,9 @@ Install the [Limelight Codex Plugin](https://github.com/b-nnett/limelight-codex-
 Agents can query Limelight through its local HTTP API. A basic search looks like this:
 
 ```sh
+TOKEN="$(cat "$HOME/Library/Application Support/Limelight/auth-token")"
 curl -s http://127.0.0.1:8765/v1/search \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"query":"passport","sources":["photos"],"types":["image"],"limit":5}'
 ```

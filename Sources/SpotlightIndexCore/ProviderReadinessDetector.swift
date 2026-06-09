@@ -65,7 +65,7 @@ enum ProviderReadinessDetector {
             source: SearchSource.photos.rawValue,
             status: status,
             summary: summary,
-            setupHint: status == "ready" ? nil : "Grant Photos/Full Disk Access to the process running spotlight-index, or verify the default Photos library path.",
+            setupHint: status == "ready" ? nil : "Grant Photos/Full Disk Access to Limelight, or verify the default Photos library path.",
             checks: checks
         )
     }
@@ -77,7 +77,7 @@ enum ProviderReadinessDetector {
             source: SearchSource.contacts.rawValue,
             status: ready ? "ready" : "needs_permission",
             summary: "Contacts permission is \(status).",
-            setupHint: ready ? nil : "Grant Contacts access to the process running spotlight-index.",
+            setupHint: ready ? nil : "Grant Contacts access to Limelight.",
             checks: [
                 ProviderReadinessCheck(name: "contacts-permission", status: ready ? "ok" : "needs_permission", message: "\(status)")
             ]
@@ -129,7 +129,7 @@ enum ProviderReadinessDetector {
             source: SearchSource.reminders.rawValue,
             status: status,
             summary: summary,
-            setupHint: status == "ready" ? nil : "Grant Reminders access or Full Disk Access to the process running spotlight-index, then retry.",
+            setupHint: status == "ready" ? nil : "Grant Reminders access or Full Disk Access to Limelight, then retry.",
             checks: [ProviderReadinessCheck(name: "eventkit-reminders", status: permissionStatus, message: "\(reminderStatus)")] + checks
         )
     }
@@ -145,7 +145,7 @@ enum ProviderReadinessDetector {
             source: SearchSource.notes.rawValue,
             status: status,
             summary: status == "ready" ? "Notes private store is readable." : "Notes private store is not currently readable.",
-            setupHint: status == "ready" ? nil : "Grant Full Disk Access to the process running spotlight-index, then retry.",
+            setupHint: status == "ready" ? nil : "Grant Full Disk Access to Limelight, then retry.",
             checks: checks
         )
     }
@@ -171,7 +171,7 @@ enum ProviderReadinessDetector {
             source: SearchSource.mail.rawValue,
             status: status,
             summary: status == "ready" ? "Mail envelope index is readable." : "Mail envelope index is not currently readable.",
-            setupHint: status == "ready" ? nil : "Grant Full Disk Access to the process running spotlight-index, then retry.",
+            setupHint: status == "ready" ? nil : "Grant Full Disk Access to Limelight, then retry.",
             checks: checks
         )
     }
@@ -188,7 +188,7 @@ enum ProviderReadinessDetector {
             source: SearchSource.safari.rawValue,
             status: status,
             summary: status == "ready" ? "Safari history database is readable." : "Safari history database is not currently readable.",
-            setupHint: status == "ready" ? nil : "Grant Full Disk Access to the process running spotlight-index, then retry.",
+            setupHint: status == "ready" ? nil : "Grant Full Disk Access to Limelight, then retry.",
             checks: checks
         )
     }
@@ -205,7 +205,7 @@ enum ProviderReadinessDetector {
             source: SearchSource.messages.rawValue,
             status: status,
             summary: status == "ready" ? "Messages chat database is readable." : "Messages chat database is not currently readable.",
-            setupHint: status == "ready" ? nil : "Grant Full Disk Access to the process running spotlight-index, then retry.",
+            setupHint: status == "ready" ? nil : "Grant Full Disk Access to Limelight, then retry.",
             checks: checks
         )
     }
@@ -249,8 +249,10 @@ enum ProviderReadinessDetector {
             return "ok"
         }
         switch status {
-        case .fullAccess, .writeOnly:
+        case .fullAccess:
             return "ok"
+        case .writeOnly:
+            return "needs_permission"
         case .denied, .restricted, .notDetermined:
             return "needs_permission"
         @unknown default:
@@ -260,7 +262,7 @@ enum ProviderReadinessDetector {
 
     private static func canReadEvents(_ status: EKAuthorizationStatus) -> Bool {
         if #available(macOS 14.0, *) {
-            return status == .fullAccess || status == .writeOnly
+            return status == .fullAccess
         }
         return status.rawValue == 3
     }
