@@ -231,6 +231,7 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func presentUpdateAlert(for release: GitHubReleaseChecker.Release) {
+        NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "A Limelight update is available"
         alert.informativeText = "Version \(release.version) is available on GitHub."
@@ -238,6 +239,8 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Download and Install")
         alert.addButton(withTitle: "Skip This One")
         alert.addButton(withTitle: "Later")
+        alert.window.level = .floating
+        alert.window.orderFrontRegardless()
         let response = alert.runModal()
         switch response {
         case .alertFirstButtonReturn:
