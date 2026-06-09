@@ -1,8 +1,10 @@
+import AppKit
 import CoreServices
 import Foundation
 
 public final class SpotlightSearchService: @unchecked Sendable {
     private let providers: [SearchSource: SearchProvider]
+    private let itemOpener: ItemOpening
 
     public convenience init() {
         self.init(providers: [
@@ -18,9 +20,10 @@ public final class SpotlightSearchService: @unchecked Sendable {
         ])
     }
 
-    init(providers: [SearchProvider]) {
+    init(providers: [SearchProvider], itemOpener: ItemOpening = WorkspaceItemOpener()) {
         let defaultProviders: [SearchProvider] = providers
         self.providers = Dictionary(uniqueKeysWithValues: defaultProviders.map { ($0.source, $0) })
+        self.itemOpener = itemOpener
     }
 
     public func health() -> HealthResponse {
@@ -29,6 +32,10 @@ public final class SpotlightSearchService: @unchecked Sendable {
             spotlightIndexingEnabled: Self.spotlightIndexingAppearsEnabled(),
             providers: SearchSource.allCases.map(\.rawValue)
         )
+    }
+
+    public static func warmProviderIndexes() {
+        MailSQLiteProvider.warmPathIndexInBackground()
     }
 
     public func schema() -> SchemaResponse {
@@ -278,7 +285,46 @@ public final class SpotlightSearchService: @unchecked Sendable {
         }
 
         let reader = MDItemMetadataReader(item: item, path: path)
-        return ItemResponse(item: SpotlightRecordNormalizer.normalize(reader).itemRecord)
+        return ItemResponse(item: ItemRecord(file: SpotlightRecordNormalizer.normalize(reader)))
+    }
+
+    public func item(source sourceName: String, id: String) throws -> ItemResponse {
+        let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedID.isEmpty else {
+            throw SpotlightSearchError.invalidItemID(id)
+        }
+        let source = try requestedSource(sourceName)
+        guard let provider = providers[source] as? ItemProvider else {
+            throw SpotlightSearchError.unsupportedItemSource(source.rawValue)
+        }
+        return ItemResponse(item: try provider.item(id: trimmedID))
+    }
+
+    public func open(_ request: OpenItemRequest) throws -> OpenItemResponse {
+        if let urlString = request.url?.trimmingCharacters(in: .whitespacesAndNewlines), !urlString.isEmpty {
+            let url = try validatedURL(urlString)
+            try itemOpener.open(url)
+            return OpenItemResponse(opened: true, target: url.absoluteString, item: nil)
+        }
+
+        if let path = request.path?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty {
+            guard path.hasPrefix("/") else {
+                throw SpotlightSearchError.invalidPath(path)
+            }
+            let url = URL(fileURLWithPath: path)
+            try itemOpener.open(url)
+            return OpenItemResponse(opened: true, target: path, item: nil)
+        }
+
+        if let source = request.source?.trimmingCharacters(in: .whitespacesAndNewlines), !source.isEmpty,
+           let id = request.id?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
+            let item = try item(source: source, id: id).item
+            let url = try openURL(for: item)
+            try itemOpener.open(url)
+            return OpenItemResponse(opened: true, target: url.absoluteString, item: item)
+        }
+
+        throw SpotlightSearchError.missingOpenTarget
     }
 
     static func spotlightIndexingAppearsEnabled() -> Bool {
@@ -305,14 +351,36 @@ public final class SpotlightSearchService: @unchecked Sendable {
         let names = sourceNames ?? SearchSource.allCases.map(\.rawValue)
         var sources: [SearchSource] = []
         for name in names {
-            guard let source = SearchSource(rawValue: name) else {
-                throw SpotlightSearchError.unsupportedSource(name)
-            }
+            let source = try requestedSource(name)
             if !sources.contains(source) {
                 sources.append(source)
             }
         }
         return sources
+    }
+
+    private func requestedSource(_ sourceName: String) throws -> SearchSource {
+        guard let source = SearchSource(rawValue: sourceName) else {
+            throw SpotlightSearchError.unsupportedSource(sourceName)
+        }
+        return source
+    }
+
+    private func openURL(for item: ItemRecord) throws -> URL {
+        if let urlString = item.url?.trimmingCharacters(in: .whitespacesAndNewlines), !urlString.isEmpty {
+            return try validatedURL(urlString)
+        }
+        if let path = item.path?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty, path.hasPrefix("/") {
+            return URL(fileURLWithPath: path)
+        }
+        throw SpotlightSearchError.unopenableItem(item.id)
+    }
+
+    private func validatedURL(_ urlString: String) throws -> URL {
+        guard let url = URL(string: urlString), url.scheme?.isEmpty == false else {
+            throw SpotlightSearchError.invalidURL(urlString)
+        }
+        return url
     }
 
     private func score(result: SearchResultRecord, query: String) -> Int {
@@ -454,12 +522,18 @@ public enum SpotlightSearchError: Error, LocalizedError {
     case queryCreationFailed
     case queryExecutionFailed
     case invalidPath(String)
+    case invalidItemID(String)
     case invalidAssetID(String)
     case unsupportedSource(String)
+    case unsupportedItemSource(String)
     case unreadablePath(String)
     case unsupportedOCRPath(String)
     case unsupportedEntityType(String)
     case invalidOutputPath(String)
+    case invalidURL(String)
+    case missingOpenTarget
+    case unopenableItem(String)
+    case openFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -469,10 +543,14 @@ public enum SpotlightSearchError: Error, LocalizedError {
             "failed to execute Spotlight query"
         case .invalidPath(let path):
             "path must be absolute: \(path)"
+        case .invalidItemID(let id):
+            "item id is required: \(id)"
         case .invalidAssetID(let id):
             "asset id is required: \(id)"
         case .unsupportedSource(let source):
             "unsupported source: \(source)"
+        case .unsupportedItemSource(let source):
+            "source does not support item loading: \(source)"
         case .unreadablePath(let path):
             "path is not readable: \(path)"
         case .unsupportedOCRPath(let path):
@@ -481,6 +559,26 @@ public enum SpotlightSearchError: Error, LocalizedError {
             "unsupported entity type: \(entityType)"
         case .invalidOutputPath(let path):
             "output path must be absolute: \(path)"
+        case .invalidURL(let url):
+            "url is invalid: \(url)"
+        case .missingOpenTarget:
+            "open request requires url, path, or source and id"
+        case .unopenableItem(let id):
+            "item has no openable url or path: \(id)"
+        case .openFailed(let target):
+            "failed to open item: \(target)"
+        }
+    }
+}
+
+protocol ItemOpening: Sendable {
+    func open(_ url: URL) throws
+}
+
+struct WorkspaceItemOpener: ItemOpening {
+    func open(_ url: URL) throws {
+        guard NSWorkspace.shared.open(url) else {
+            throw SpotlightSearchError.openFailed(url.absoluteString)
         }
     }
 }

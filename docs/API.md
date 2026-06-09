@@ -11,6 +11,9 @@ Limelight exposes a local HTTP API on `127.0.0.1:8765` by default.
 - `POST /v1/permissions/request`
 - `GET /v1/photos/thumbnail?id=PHOTOS-ASSET-UUID`
 - `GET /v1/item?path=/absolute/path`
+- `GET /v1/item?source=notes&id=NOTE-ID`
+- `GET /v1/item?source=mail&id=mail:ROWID`
+- `POST /v1/open`
 - `POST /v1/search`
 - `POST /v1/deep-search`
 - `POST /v1/ocr`
@@ -59,6 +62,36 @@ curl -o thumbnail.jpg 'http://127.0.0.1:8765/v1/photos/thumbnail?id=PHOTOS-ASSET
 ```
 
 The thumbnail endpoint serves only readable derivative files inside the local Photos library.
+
+## Items and Opening
+
+Load file metadata:
+
+```sh
+curl -s 'http://127.0.0.1:8765/v1/item?path=/Applications/Safari.app'
+```
+
+Load a provider-backed item from a search result. For Notes, use the result `id` or `metadata.noteID`; item lookup returns the full decoded note body in `item.metadata.body` when the private store is readable:
+
+```sh
+curl -s 'http://127.0.0.1:8765/v1/item?source=notes&id=NOTE-ID'
+```
+
+For Mail, use the search result `id` such as `mail:241231`; item lookup returns bounded plain text in `item.metadata.bodyExcerpt` and `item.metadata.bodyText`:
+
+```sh
+curl -s 'http://127.0.0.1:8765/v1/item?source=mail&id=mail:241231'
+```
+
+Open a local file, URL, or provider item on the Mac running Limelight:
+
+```sh
+curl -s http://127.0.0.1:8765/v1/open \
+  -H 'Content-Type: application/json' \
+  -d '{"source":"notes","id":"NOTE-ID"}'
+```
+
+Notes items include a `notes://showNote?identifier=...` URL when Apple stores a durable note identifier.
 
 ## Toolbox Endpoints
 

@@ -117,12 +117,18 @@ private final class HTTPConnectionHandler: @unchecked Sendable {
             case ("POST", "/v1/extract"):
                 let extractRequest = try JSONDecoder().decode(ExtractRequest.self, from: request.body)
                 send(status: 200, body: try service.extract(extractRequest))
+            case ("POST", "/v1/open"):
+                let openRequest = try JSONDecoder().decode(OpenItemRequest.self, from: request.body)
+                send(status: 200, body: try service.open(openRequest))
             case ("GET", "/v1/item"):
-                guard let path = request.queryItems["path"], !path.isEmpty else {
-                    send(status: 400, body: ErrorResponse(error: "missing required query parameter: path"))
-                    return
+                if let path = request.queryItems["path"], !path.isEmpty {
+                    send(status: 200, body: try service.item(at: path))
+                } else if let source = request.queryItems["source"], !source.isEmpty,
+                          let id = request.queryItems["id"], !id.isEmpty {
+                    send(status: 200, body: try service.item(source: source, id: id))
+                } else {
+                    send(status: 400, body: ErrorResponse(error: "missing required query parameter: path or source and id"))
                 }
-                send(status: 200, body: try service.item(at: path))
             case ("GET", "/v1/photos/thumbnail"):
                 guard let uuid = request.queryItems["id"] ?? request.queryItems["uuid"], !uuid.isEmpty else {
                     send(status: 400, body: ErrorResponse(error: "missing required query parameter: id"))

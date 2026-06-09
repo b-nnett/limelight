@@ -286,6 +286,22 @@ class SpotlightIndexClientTests(unittest.TestCase):
                 None,
                 {"item": {"id": "item-1", "path": "/tmp/a file & more.txt", "metadata": {}}},
             ),
+            (
+                "provider_item",
+                lambda client: client.item(source="notes", id="note-1"),
+                "GET",
+                "/v1/item?source=notes&id=note-1",
+                None,
+                {"item": {"id": "note-1", "source": "notes", "title": "Note", "metadata": {"body": "Full note"}}},
+            ),
+            (
+                "open_provider_item",
+                lambda client: client.open_item(source="notes", id="note-1"),
+                "POST",
+                "/v1/open",
+                {"source": "notes", "id": "note-1"},
+                {"opened": True, "target": "notes://showNote?identifier=NOTE-1", "item": None},
+            ),
         ]
 
         for name, call, method, path, body, response in cases:

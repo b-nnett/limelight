@@ -73,7 +73,61 @@ final class FallbackProviderTests: XCTestCase {
         XCTAssertEqual(results.first?.metadata["mailbox"], .string("Inbox"))
         XCTAssertEqual(results.first?.metadata["flags"], .number(17))
         XCTAssertEqual(results.first?.path, "/mail/message.emlx")
+        XCTAssertEqual(results.first?.id, "mail:1")
         XCTAssertEqual(results.first?.url, "message://%3Cabc@example.com%3E")
+    }
+
+    func testMailProviderItemReturnsBoundedBodyText() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+        }
+        let messageURL = folder.appendingPathComponent("message.emlx")
+        try """
+        128
+        Subject: Your withdrawal request has been received.
+        Content-Transfer-Encoding: quoted-printable
+
+        Your money is on its way
+        Amount: GBP 799.05
+        """.write(to: messageURL, atomically: true, encoding: .utf8)
+        let dbPath = try makeTempDB { db in
+            try db.execute("CREATE TABLE messages (subject TEXT, sender TEXT, recipients TEXT, date_sent REAL, snippet TEXT, message_id TEXT, path TEXT, flags INTEGER, mailbox TEXT)")
+            try db.execute("INSERT INTO messages VALUES ('Your withdrawal request has been received.', 'no-reply@info.trading212.com', 'bennett@example.com', 1717902000, NULL, 'abc@example.com', '\(messageURL.path)', 0, 'Inbox')")
+        }
+
+        let item = try MailSQLiteProvider(envelopeDBPath: dbPath).item(id: "mail:1")
+
+        XCTAssertEqual(item.id, "mail:1")
+        XCTAssertEqual(item.source, "mail")
+        XCTAssertEqual(item.title, "Your withdrawal request has been received.")
+        XCTAssertEqual(item.metadata["bodyText"], .string("Your money is on its way Amount: GBP 799.05"))
+        XCTAssertEqual(item.metadata["bodyExcerpt"], .string("Your money is on its way Amount: GBP 799.05"))
+    }
+
+    func testMailProviderMatchesCompactedSenderForSpacedQuery() throws {
+        let dbPath = try makeTempDB { db in
+            try db.execute("CREATE TABLE messages (subject TEXT, sender TEXT, recipients TEXT, date_sent REAL, snippet TEXT)")
+            try db.execute("INSERT INTO messages VALUES ('Your money is on its way', 'no-reply@info.trading212.com', 'bennett@example.com', 3000, NULL)")
+            try db.execute("INSERT INTO messages VALUES ('You sent money elsewhere', 'other@example.com', 'bennett@example.com', 4000, NULL)")
+        }
+
+        let results = try MailSQLiteProvider(envelopeDBPath: dbPath).search(context("Trading 212"))
+
+        XCTAssertEqual(results.map(\.title), ["Your money is on its way"])
+    }
+
+    func testMailProviderMatchesIntentTokensAcrossSenderAndSubject() throws {
+        let dbPath = try makeTempDB { db in
+            try db.execute("CREATE TABLE messages (subject TEXT, sender TEXT, recipients TEXT, date_sent REAL, snippet TEXT)")
+            try db.execute("INSERT INTO messages VALUES ('Your withdrawal request has been received', 'no-reply@info.trading212.com', 'bennett@example.com', 3000, NULL)")
+            try db.execute("INSERT INTO messages VALUES ('You sent money to Trading 212 UK Limited', 'bank@example.com', 'bennett@example.com', 4000, NULL)")
+        }
+
+        let results = try MailSQLiteProvider(envelopeDBPath: dbPath).search(context("Trading 212 withdrawal"))
+
+        XCTAssertEqual(results.map(\.title), ["Your withdrawal request has been received"])
     }
 
     func testMailProviderResolvesAppleEnvelopeShapeWithSubjectAndAddressTables() throws {
@@ -207,6 +261,79 @@ final class FallbackProviderTests: XCTestCase {
         XCTAssertEqual(results.first?.subtitle, "This note body mentions Bennett")
     }
 
+    func testNotesProviderDecodesGzipProtobufNoteData() throws {
+        let gzipProtobuf = "1f8b0800d128286a02ffe352135271ce4f49ad5048afca2c5048ca4fa954c8c9cc4b55c8cf4be52a4e4dcecf4b01f301a6a987bf28000000"
+        let expectedBody = "Codex gzip body line one\nsecond line"
+        let dbPath = try makeTempDB { db in
+            try db.execute("CREATE TABLE ZICCLOUDSYNCINGOBJECT (Z_PK INTEGER PRIMARY KEY, ZTITLE1 TEXT, ZSNIPPET TEXT, ZIDENTIFIER TEXT, ZMODIFICATIONDATE1 REAL)")
+            try db.execute("CREATE TABLE ZICNOTEDATA (Z_PK INTEGER PRIMARY KEY, ZNOTE INTEGER, ZDATA BLOB)")
+            try db.execute("INSERT INTO ZICCLOUDSYNCINGOBJECT VALUES (1, 'Compressed note', 'Short preview only', 'GZIP-NOTE-1', 6000)")
+            try db.execute("INSERT INTO ZICNOTEDATA VALUES (10, 1, X'\(gzipProtobuf)')")
+        }
+        let provider = NotesSQLiteProvider(notesDBPath: dbPath)
+
+        let result = try XCTUnwrap(provider.search(context("codex")).first)
+        let item = try provider.item(id: result.id)
+
+        XCTAssertEqual(result.title, "Compressed note")
+        XCTAssertEqual(result.subtitle, "Codex gzip body line one second line")
+        XCTAssertEqual(result.metadata["matchReason"], .string("body"))
+        XCTAssertEqual(item.metadata["body"], .string(expectedBody))
+        XCTAssertEqual(item.url, "notes://showNote?identifier=GZIP-NOTE-1")
+    }
+
+    func testNotesProviderDoesNotUseCompressedNoiseAsSnippet() throws {
+        let invalidGzip = "1f8b08000000000000ff000000000000000000"
+        let dbPath = try makeTempDB { db in
+            try db.execute("CREATE TABLE ZICCLOUDSYNCINGOBJECT (Z_PK INTEGER PRIMARY KEY, ZTITLE1 TEXT, ZMODIFICATIONDATE1 REAL)")
+            try db.execute("CREATE TABLE ZICNOTEDATA (Z_PK INTEGER PRIMARY KEY, ZNOTE INTEGER, ZDATA BLOB)")
+            try db.execute("INSERT INTO ZICCLOUDSYNCINGOBJECT VALUES (1, 'Codex title only', 6000)")
+            try db.execute("INSERT INTO ZICNOTEDATA VALUES (10, 1, X'\(invalidGzip)')")
+        }
+
+        let result = try XCTUnwrap(NotesSQLiteProvider(notesDBPath: dbPath).search(context("codex")).first)
+
+        XCTAssertEqual(result.title, "Codex title only")
+        XCTAssertNil(result.subtitle)
+        XCTAssertEqual(result.metadata["matchReason"], .string("title"))
+    }
+
+    func testNotesProviderLoadsFullFixtureNoteByRawID() throws {
+        let body = "Line one mentions Bennett.\nLine two has the full private note body."
+        let dbPath = try makeTempDB { db in
+            try db.execute("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT, body TEXT, modified_at REAL, identifier TEXT)")
+            try db.execute("INSERT INTO notes VALUES (1, 'Bennett note', '\(body)', 5000, 'NOTE-IDENTIFIER-1')")
+        }
+
+        let item = try NotesSQLiteProvider(notesDBPath: dbPath).item(id: "1")
+
+        XCTAssertEqual(item.source, "notes")
+        XCTAssertEqual(item.entityType, "note")
+        XCTAssertEqual(item.title, "Bennett note")
+        XCTAssertEqual(item.url, "notes://showNote?identifier=NOTE-IDENTIFIER-1")
+        XCTAssertEqual(item.metadata["body"], .string(body))
+        XCTAssertEqual(item.metadata["bodyLength"], .number(Double(body.count)))
+    }
+
+    func testNotesProviderLoadsFullAppleNoteByStableSearchID() throws {
+        let dbPath = try makeTempDB { db in
+            try db.execute("CREATE TABLE ZICCLOUDSYNCINGOBJECT (Z_PK INTEGER PRIMARY KEY, ZTITLE1 TEXT, ZSNIPPET TEXT, ZIDENTIFIER TEXT, ZMODIFICATIONDATE1 REAL)")
+            try db.execute("CREATE TABLE ZICNOTEDATA (Z_PK INTEGER PRIMARY KEY, ZNOTE INTEGER, ZPLAINTEXT TEXT)")
+            try db.execute("INSERT INTO ZICCLOUDSYNCINGOBJECT VALUES (7, 'Project note', 'short Bennett snippet', 'APPLE-NOTE-7', 6000)")
+            try db.execute("INSERT INTO ZICNOTEDATA VALUES (10, 7, 'Full Bennett body loaded from linked note data')")
+        }
+        let provider = NotesSQLiteProvider(notesDBPath: dbPath)
+        let result = try XCTUnwrap(provider.search(context("bennett")).first)
+
+        let item = try provider.item(id: result.id)
+
+        XCTAssertEqual(item.id, result.id)
+        XCTAssertEqual(item.url, "notes://showNote?identifier=APPLE-NOTE-7")
+        XCTAssertEqual(item.metadata["notesIdentifier"], .string("APPLE-NOTE-7"))
+        XCTAssertEqual(item.metadata["openURL"], .string("notes://showNote?identifier=APPLE-NOTE-7"))
+        XCTAssertEqual(item.metadata["body"], .string("Full Bennett body loaded from linked note data"))
+    }
+
     func testPhotosProviderResolvesNamedPersonAssets() throws {
         let libraryURL = try makePhotosFixture(assetUUID: "ABCDEF12-3456-7890-ABCD-EF1234567890")
 
@@ -265,6 +392,41 @@ final class FallbackProviderTests: XCTestCase {
         let response = try service.search(SearchRequest(query: "bennett", limit: 10))
 
         XCTAssertEqual(Set(response.results.map(\.source)), ["contacts", "photos", "notes"])
+    }
+
+    func testServiceLoadsProviderItemBySourceAndID() throws {
+        let dbPath = try makeTempDB { db in
+            try db.execute("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT, body TEXT, modified_at REAL)")
+            try db.execute("INSERT INTO notes VALUES (1, 'Loaded note', 'Full note body', 5000)")
+        }
+        let service = SpotlightSearchService(providers: [
+            NotesSQLiteProvider(notesDBPath: dbPath)
+        ])
+
+        let response = try service.item(source: "notes", id: "1")
+
+        XCTAssertEqual(response.item.source, "notes")
+        XCTAssertEqual(response.item.title, "Loaded note")
+        XCTAssertEqual(response.item.metadata["body"], .string("Full note body"))
+    }
+
+    func testServiceOpensProviderItemURL() throws {
+        let dbPath = try makeTempDB { db in
+            try db.execute("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT, body TEXT, modified_at REAL, identifier TEXT)")
+            try db.execute("INSERT INTO notes VALUES (1, 'Open note', 'Full note body', 5000, 'NOTE-OPEN-1')")
+        }
+        let opener = RecordingItemOpener()
+        let service = SpotlightSearchService(
+            providers: [NotesSQLiteProvider(notesDBPath: dbPath)],
+            itemOpener: opener
+        )
+
+        let response = try service.open(OpenItemRequest(source: "notes", id: "1"))
+
+        XCTAssertTrue(response.opened)
+        XCTAssertEqual(response.target, "notes://showNote?identifier=NOTE-OPEN-1")
+        XCTAssertEqual(response.item?.title, "Open note")
+        XCTAssertEqual(opener.openedURLs.map(\.absoluteString), ["notes://showNote?identifier=NOTE-OPEN-1"])
     }
 
     func testProviderReadinessListsAllSources() {
@@ -454,5 +616,13 @@ private struct FailingProvider: SearchProvider {
 
     func search(_ context: ProviderSearchContext) throws -> [SearchResultRecord] {
         throw ProviderError.unavailable("fixture failure")
+    }
+}
+
+private final class RecordingItemOpener: ItemOpening, @unchecked Sendable {
+    private(set) var openedURLs: [URL] = []
+
+    func open(_ url: URL) throws {
+        openedURLs.append(url)
     }
 }

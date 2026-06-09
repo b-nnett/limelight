@@ -241,7 +241,12 @@ export interface PermissionResponse {
 
 export interface SpotlightRecord {
   id: string;
-  path: string;
+  source?: string | null;
+  entityType?: string | null;
+  title?: string | null;
+  subtitle?: string | null;
+  path?: string | null;
+  url?: string | null;
   displayName?: string | null;
   contentType?: string | null;
   kind?: string | null;
@@ -255,6 +260,25 @@ export interface SpotlightRecord {
 
 export interface ItemResponse {
   item: SpotlightRecord;
+}
+
+export interface ItemLookup {
+  path?: string;
+  source?: SearchSource;
+  id?: string;
+}
+
+export interface OpenItemRequest {
+  path?: string;
+  source?: SearchSource;
+  id?: string;
+  url?: string;
+}
+
+export interface OpenItemResponse {
+  opened: boolean;
+  target: string;
+  item?: SpotlightRecord | null;
 }
 
 export class LimelightError extends Error {
@@ -304,8 +328,24 @@ export class LimelightClient {
     return this.request("POST", "/v1/permissions/request", sources ? { sources } : {});
   }
 
-  item(path: string): Promise<ItemResponse> {
-    return this.request("GET", `/v1/item?${new URLSearchParams({ path })}`);
+  item(pathOrLookup: string | ItemLookup): Promise<ItemResponse> {
+    const lookup = typeof pathOrLookup === "string" ? { path: pathOrLookup } : pathOrLookup;
+    const params = new URLSearchParams();
+    if (lookup.path !== undefined) {
+      params.set("path", lookup.path);
+    }
+    if (lookup.source !== undefined) {
+      params.set("source", lookup.source);
+    }
+    if (lookup.id !== undefined) {
+      params.set("id", lookup.id);
+    }
+    return this.request("GET", `/v1/item?${params}`);
+  }
+
+  openItem(request: string | OpenItemRequest): Promise<OpenItemResponse> {
+    const payload = typeof request === "string" ? { path: request } : request;
+    return this.request("POST", "/v1/open", payload);
   }
 
   async search(request: SearchRequest | string): Promise<SearchResult[]> {

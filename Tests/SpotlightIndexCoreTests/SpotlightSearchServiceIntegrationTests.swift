@@ -27,7 +27,7 @@ final class SpotlightSearchServiceIntegrationTests: XCTestCase {
         let service = SpotlightSearchService()
         let response = try service.item(at: #filePath)
 
-        XCTAssertEqual(response.item.path, #filePath)
+        XCTAssertEqual(response.item.path, Optional(#filePath))
         XCTAssertNotNil(response.item.displayName)
         XCTAssertNotNil(response.item.contentType)
         XCTAssertEqual(response.item.metadata[SpotlightAttributes.authors], .null)

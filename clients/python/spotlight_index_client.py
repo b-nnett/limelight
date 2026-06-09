@@ -132,8 +132,34 @@ class SpotlightIndexClient:
             body = error.read().decode("utf-8")
             raise SpotlightIndexError(f"{error.code}: {body}") from error
 
-    def item(self, path: str) -> dict[str, Any]:
-        return self._request("GET", f"/v1/item?{urlencode({'path': path})}")
+    def item(self, path: str | None = None, *, source: str | None = None, id: str | None = None) -> dict[str, Any]:
+        params: dict[str, str] = {}
+        if path is not None:
+            params["path"] = path
+        if source is not None:
+            params["source"] = source
+        if id is not None:
+            params["id"] = id
+        return self._request("GET", f"/v1/item?{urlencode(params)}")
+
+    def open_item(
+        self,
+        path: str | None = None,
+        *,
+        source: str | None = None,
+        id: str | None = None,
+        url: str | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, str] = {}
+        if path is not None:
+            payload["path"] = path
+        if source is not None:
+            payload["source"] = source
+        if id is not None:
+            payload["id"] = id
+        if url is not None:
+            payload["url"] = url
+        return self._request("POST", "/v1/open", payload)
 
     def search(
         self,

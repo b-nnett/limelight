@@ -70,12 +70,17 @@ enum ProviderCatalog {
         .notes: ProviderSchemaRecord(
             entityTypes: ["note"],
             fields: baseFields.merging([
-                "subtitle": "Short snippet, not full note body.",
+                "subtitle": "Short note snippet in search results.",
+                "url": "notes:// deep link when Apple stores a note identifier.",
                 "modifiedAt": "Note modification date when available."
             ], uniquingKeysWith: { _, new in new }),
             metadataFields: [
                 "noteID": "Private-store note identifier.",
-                "matchReason": "title or body."
+                "notesIdentifier": "Apple Notes durable identifier when available.",
+                "openURL": "Same value as url; suitable for /v1/open.",
+                "matchReason": "title or body.",
+                "body": "Full decoded note body on /v1/item lookups only.",
+                "bodyLength": "Decoded full-body character count on /v1/item lookups only."
             ]
         ),
         .mail: ProviderSchemaRecord(
@@ -91,7 +96,9 @@ enum ProviderCatalog {
                 "mailbox": "Mailbox or account label when available.",
                 "flags": "Raw message flags when available.",
                 "recipients": "Recipient metadata when available.",
-                "snippet": "Message snippet when available."
+                "snippet": "Message snippet when available.",
+                "bodyExcerpt": "Bounded body excerpt on explicit item lookup.",
+                "bodyText": "Bounded plain-text body on explicit item lookup."
             ]
         ),
         .messages: ProviderSchemaRecord(
@@ -188,7 +195,7 @@ enum ProviderCatalog {
         case .reminders:
             return ["Uses EventKit when permission is granted; private-store fallback remains schema-dependent."]
         case .notes:
-            return ["Does not expose full note bodies by default; rich attributed note decoding is partial."]
+            return ["Search returns snippets; full decoded note bodies are available through item lookup. Rich attributed attachment decoding is still best-effort."]
         case .mail:
             return ["Mail message file paths and mailbox/account metadata are not fully resolved yet."]
         case .messages:

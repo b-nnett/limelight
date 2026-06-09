@@ -119,6 +119,14 @@ item = client.item("/Applications/Safari.app")
 print(item["item"]["metadata"])
 ```
 
+Load a provider-backed Notes item and open it locally:
+
+```python
+note = client.item(source="notes", id="NOTE-ID")
+print(note["item"]["metadata"]["body"])
+client.open_item(source="notes", id="NOTE-ID")
+```
+
 ## Photos Thumbnails
 
 Fetch thumbnail bytes by Photos asset id:

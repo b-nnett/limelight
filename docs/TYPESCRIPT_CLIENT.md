@@ -141,6 +141,14 @@ const item = await client.item("/Applications/Safari.app");
 console.log(item.item.metadata);
 ```
 
+Load a provider-backed Notes item and open it locally:
+
+```ts
+const note = await client.item({ source: "notes", id: "NOTE-ID" });
+console.log(note.item.metadata.body);
+await client.openItem({ source: "notes", id: "NOTE-ID" });
+```
+
 ## Photos Thumbnails
 
 Fetch thumbnail bytes by Photos asset id:

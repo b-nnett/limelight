@@ -31,6 +31,7 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.applicationIconImage = Self.appIcon()
         installStatusItem()
         startServer()
+        SpotlightSearchService.warmProviderIndexes()
         refreshProviderStatus()
         showPermissionsAfterInstallIfNeeded()
         updateService.startPeriodicChecks()
@@ -668,7 +669,7 @@ private final class RecentSearchesWindowController: NSWindowController, NSTableV
     private let onClearHistory: () -> Void
     private var searches: [RecentSearch] = []
     private var clearToolbarItem: NSToolbarItem?
-    private var clearHistoryButton: NSSegmentedControl?
+    private var clearHistoryButton: NSButton?
 
     init(onClearHistory: @escaping () -> Void) {
         self.onClearHistory = onClearHistory
@@ -739,15 +740,17 @@ private final class RecentSearchesWindowController: NSWindowController, NSTableV
         item.label = "Clear"
         item.paletteLabel = "Clear History"
         item.toolTip = "Clear search history"
-        let button = NSSegmentedControl(images: [NSImage(systemSymbolName: "trash", accessibilityDescription: "Clear History") ?? NSImage()], trackingMode: .momentary, target: self, action: #selector(clearHistory))
-        button.segmentStyle = .texturedRounded
+        let button = NSButton(image: NSImage(systemSymbolName: "trash", accessibilityDescription: "Clear History") ?? NSImage(), target: self, action: #selector(clearHistory))
+        button.bezelStyle = .texturedRounded
         button.controlSize = .regular
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleProportionallyDown
+        button.alignment = .center
         button.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             button.widthAnchor.constraint(equalToConstant: 34),
             button.heightAnchor.constraint(equalToConstant: 30)
         ])
-        button.setWidth(30, forSegment: 0)
         button.toolTip = "Clear search history"
         button.isEnabled = !searches.isEmpty
         item.view = button
@@ -1490,7 +1493,7 @@ private struct RecentSearch {
     let searchedAt: Date
 
     var menuTitle: String {
-        "\(query.limited(to: 28)) · \(originatorApp.limited(to: 18)) · \(menuSources) · \(count) result\(count == 1 ? "" : "s")".limited(to: 68)
+        "\(query.limited(to: 44)) · \(count) result\(count == 1 ? "" : "s")".limited(to: 68)
     }
 
     var detailLine: String {
@@ -1505,17 +1508,6 @@ private struct RecentSearch {
     var secondaryLine: String {
         let limitText = limit.map { "limit \($0)" } ?? "default limit"
         return "\(types) · \(limitText) · \(Self.dateFormatter.string(from: searchedAt))"
-    }
-
-    private var menuSources: String {
-        let parts = sources
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        if parts.count > 2 {
-            return "\(parts.count) sources"
-        }
-        return sources.limited(to: 18)
     }
 
     private static let dateFormatter: DateFormatter = {

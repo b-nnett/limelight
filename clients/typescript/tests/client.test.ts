@@ -235,6 +235,21 @@ test("simple endpoint contracts use expected routes and bodies", async () => {
       path: "/v1/item?path=%2Ftmp%2Fa+file+%26+more.txt",
       response: { item: { id: "item-1", path: "/tmp/a file & more.txt", metadata: {} } },
     },
+    {
+      name: "provider item",
+      run: (client) => client.item({ source: "notes", id: "note-1" }),
+      method: "GET",
+      path: "/v1/item?source=notes&id=note-1",
+      response: { item: { id: "note-1", source: "notes", title: "Note", metadata: { body: "Full note" } } },
+    },
+    {
+      name: "open provider item",
+      run: (client) => client.openItem({ source: "notes", id: "note-1" }),
+      method: "POST",
+      path: "/v1/open",
+      body: { source: "notes", id: "note-1" },
+      response: { opened: true, target: "notes://showNote?identifier=NOTE-1", item: null },
+    },
   ];
 
   for (const scenario of cases) {
