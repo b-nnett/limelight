@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+DerivedData/
+node_modules/
+dist/
+dist-test/
