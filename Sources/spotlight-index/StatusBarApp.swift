@@ -310,12 +310,14 @@ final class SpotlightIndexAppDelegate: NSObject, NSApplicationDelegate {
 final class PermissionsWindowController: NSWindowController, NSToolbarDelegate {
     private let stackView = NSStackView()
     private let fullDiskStatusLabel = NSTextField(labelWithString: "Checking...")
+    private let frameworkStatusLabel = NSTextField(labelWithString: "Checking...")
+    private let frameworkAccessButton = NSButton(title: "Request Access", target: nil, action: nil)
     private let carouselView = AppIconCarouselView()
     private let githubToolbarItemIdentifier = NSToolbarItem.Identifier("github")
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 430),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 500),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -347,6 +349,16 @@ final class PermissionsWindowController: NSWindowController, NSToolbarDelegate {
         } else {
             fullDiskStatusLabel.stringValue = "Full Disk Access required"
             fullDiskStatusLabel.textColor = NSColor.systemOrange
+        }
+
+        if Self.frameworkAccessLooksReady(status) {
+            frameworkStatusLabel.stringValue = "Contacts, Calendar, and Reminders are enabled"
+            frameworkStatusLabel.textColor = NSColor.systemGreen
+            frameworkAccessButton.isEnabled = false
+        } else {
+            frameworkStatusLabel.stringValue = "Contacts or Calendar access required"
+            frameworkStatusLabel.textColor = NSColor.systemOrange
+            frameworkAccessButton.isEnabled = true
         }
     }
 
@@ -399,6 +411,8 @@ final class PermissionsWindowController: NSWindowController, NSToolbarDelegate {
 
         let permissionRow = buildFullDiskAccessRow()
         stackView.addArrangedSubview(permissionRow)
+        let frameworkPermissionRow = buildFrameworkAccessRow()
+        stackView.addArrangedSubview(frameworkPermissionRow)
 
         let privacyCopy = NSTextField(labelWithString: "Your data is never sent off of your device by Limelight. Using the app simply allows quicker access for AI apps to use the data.\n\nThird-party apps may send your data to their servers; read their privacy policies to learn more.")
         privacyCopy.font = NSFont.systemFont(ofSize: 12)
@@ -415,7 +429,8 @@ final class PermissionsWindowController: NSWindowController, NSToolbarDelegate {
             stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
             carouselView.widthAnchor.constraint(equalToConstant: 330),
             carouselView.heightAnchor.constraint(equalToConstant: 150),
-            permissionRow.widthAnchor.constraint(equalTo: stackView.widthAnchor)
+            permissionRow.widthAnchor.constraint(equalTo: stackView.widthAnchor),
+            frameworkPermissionRow.widthAnchor.constraint(equalTo: stackView.widthAnchor)
         ])
     }
 
@@ -471,9 +486,77 @@ final class PermissionsWindowController: NSWindowController, NSToolbarDelegate {
         return container
     }
 
+    private func buildFrameworkAccessRow() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        container.layer?.cornerRadius = 10
+        container.layer?.borderWidth = 1
+        container.layer?.borderColor = NSColor.separatorColor.cgColor
+
+        let iconView = NSImageView()
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.image = NSImage(systemSymbolName: "person.crop.circle.badge.checkmark", accessibilityDescription: "Contacts and Calendar Access")
+        iconView.contentTintColor = .labelColor
+        iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 22, weight: .medium)
+
+        let textStack = NSStackView()
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 3
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let title = NSTextField(labelWithString: "Contacts, Calendar, and Reminders")
+        title.font = NSFont.systemFont(ofSize: 14, weight: .semibold)
+        textStack.addArrangedSubview(title)
+
+        frameworkStatusLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        textStack.addArrangedSubview(frameworkStatusLabel)
+
+        frameworkAccessButton.target = self
+        frameworkAccessButton.action = #selector(requestFrameworkAccess)
+        frameworkAccessButton.translatesAutoresizingMaskIntoConstraints = false
+        frameworkAccessButton.bezelStyle = .rounded
+
+        container.addSubview(iconView)
+        container.addSubview(textStack)
+        container.addSubview(frameworkAccessButton)
+
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 74),
+            iconView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+            iconView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 30),
+            iconView.heightAnchor.constraint(equalToConstant: 30),
+            textStack.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 12),
+            textStack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: frameworkAccessButton.leadingAnchor, constant: -12),
+            frameworkAccessButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
+            frameworkAccessButton.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        ])
+
+        return container
+    }
+
     @objc private func openFullDiskAccess() {
         UserDefaults.standard.set(true, forKey: "LimelightReopenPermissionsOnNextLaunch")
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
+    }
+
+    @objc private func requestFrameworkAccess() {
+        frameworkAccessButton.isEnabled = false
+        frameworkStatusLabel.stringValue = "Requesting access..."
+        frameworkStatusLabel.textColor = .secondaryLabelColor
+
+        Task.detached {
+            let service = SpotlightSearchService()
+            _ = try? service.requestPermissions(PermissionRequest(sources: ["contacts", "calendar", "reminders"]))
+            let status = service.providerReadiness()
+            await MainActor.run {
+                self.update(status: status)
+            }
+        }
     }
 
     @objc private func openGitHub() {
@@ -485,6 +568,14 @@ final class PermissionsWindowController: NSWindowController, NSToolbarDelegate {
         return status.providers
             .filter { protectedSources.contains($0.source) }
             .allSatisfy { $0.status == "ready" }
+    }
+
+    private static func frameworkAccessLooksReady(_ status: ProvidersResponse) -> Bool {
+        let providers = Dictionary(uniqueKeysWithValues: status.providers.map { ($0.source, $0.status) })
+        let contactsReady = providers["contacts"] == "ready"
+        let calendarReady = providers["calendar"] == "ready" || providers["calendar"] == "partial"
+        let remindersReady = providers["reminders"] == "ready"
+        return contactsReady && calendarReady && remindersReady
     }
 }
 

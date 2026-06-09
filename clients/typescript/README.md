@@ -1,6 +1,6 @@
 # Limelight TypeScript Client
 
-TypeScript client for the local Limelight HTTP API. It has no runtime dependencies and uses global `fetch`, available in modern browsers and Node 18+.
+TypeScript client for the local Limelight HTTP API. It has no runtime dependencies and uses global `fetch`, available in Node 18+ and same-origin browser contexts.
 
 Full documentation: [TypeScript Client](../../docs/TYPESCRIPT_CLIENT.md).
 
@@ -19,7 +19,7 @@ npm run build
 ```ts
 import { LimelightClient } from "@limelight/client";
 
-const client = new LimelightClient();
+const client = new LimelightClient({ authToken: process.env.LIMELIGHT_AUTH_TOKEN });
 const results = await client.search({
   query: "passport",
   sources: ["photos"],

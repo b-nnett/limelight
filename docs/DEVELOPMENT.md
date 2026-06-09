@@ -4,6 +4,8 @@
 
 - macOS 14 or newer
 - Swift 6 toolchain
+- Python 3 for client tests run by release packaging
+- Node.js 18+ and npm for the TypeScript client tests run by release packaging
 - `jq` for the probe scripts
 
 ## Run Locally
@@ -65,7 +67,7 @@ Run the full completion gate:
 scripts/verify-todo-complete.sh
 ```
 
-This verifies stable signing, protected provider readiness, the acceptance matrix, file matching, and Photos thumbnail serving. It exits with a clear Full Disk Access message if Mail, Notes, or Safari are not readable.
+This is a maintainer-local acceptance gate. It verifies stable signing, protected provider readiness, the acceptance matrix, file matching, and Photos thumbnail serving against the current user's data. It exits with a clear Full Disk Access message if Mail, Notes, or Safari are not readable.
 
 When auth is enabled, set `SPOTLIGHT_INDEX_AUTH_TOKEN` for the probe and capability scripts. If the local app installer created `~/Library/Application Support/Limelight/auth-token`, the scripts read it automatically.
 
@@ -117,6 +119,6 @@ Sources/spotlight-index/      CLI entry point and menu bar app shell
 Tests/                        Swift tests for query building, normalization, providers, and integration behavior
 scripts/                      Local install, signing, probes, and validation utilities
 clients/python/               Small Python SDK for the local HTTP API
-clients/typescript/           TypeScript SDK for Node 18+ and browsers
+clients/typescript/           TypeScript SDK for Node 18+ and same-origin browser contexts
 docs/                         Installation, API, provider, development, and capability docs
 ```

@@ -57,10 +57,10 @@ Request permission prompts or setup guidance:
 curl -s http://127.0.0.1:8765/v1/permissions/request \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"sources":["contacts","calendar","reminders","mail","notes","safari"]}'
+  -d '{"sources":["contacts","calendar","reminders","photos","mail","notes","safari"]}'
 ```
 
-Contacts, Calendar, and Reminders can trigger framework permission prompts. Mail, Notes, and Safari return Full Disk Access setup instructions because macOS does not expose a programmatic Full Disk Access prompt.
+Contacts, Calendar, and Reminders can trigger framework permission prompts. Photos, Mail, Notes, and Safari return Full Disk Access setup instructions because macOS does not expose a programmatic Full Disk Access prompt for those protected stores.
 
 ## Photos Thumbnails
 

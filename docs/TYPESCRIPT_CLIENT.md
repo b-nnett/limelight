@@ -1,6 +1,6 @@
 # TypeScript Client
 
-The TypeScript client is a typed wrapper around the local Limelight HTTP API. It uses global `fetch`, so it works in modern browsers and Node 18+ without runtime dependencies.
+The TypeScript client is a typed wrapper around the local Limelight HTTP API. It uses global `fetch`, so it works in Node 18+ and same-origin browser contexts without runtime dependencies. Cross-origin browser calls to `127.0.0.1:8765` are not supported unless the server is fronted by an origin that handles CORS.
 
 ## Location
 
@@ -25,7 +25,7 @@ import { LimelightClient } from "@limelight/client";
 ## Create A Client
 
 ```ts
-const client = new LimelightClient();
+const client = new LimelightClient({ authToken: process.env.LIMELIGHT_AUTH_TOKEN });
 ```
 
 With a custom base URL:
@@ -34,10 +34,15 @@ With a custom base URL:
 const client = new LimelightClient({ baseUrl: "http://127.0.0.1:8765" });
 ```
 
-With HTTP auth:
+With HTTP auth from an installed Limelight app:
 
 ```ts
-const client = new LimelightClient({ authToken: "local-token" });
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+const authToken = readFileSync(join(homedir(), "Library/Application Support/Limelight/auth-token"), "utf8").trim();
+const client = new LimelightClient({ authToken });
 ```
 
 With an explicit `fetch` implementation:
@@ -127,10 +132,10 @@ await client.capabilities();
 Request permission prompts or setup guidance:
 
 ```ts
-await client.requestPermissions(["contacts", "calendar", "reminders", "mail", "messages", "notes", "safari"]);
+await client.requestPermissions(["contacts", "calendar", "reminders", "photos", "mail", "messages", "notes", "safari"]);
 ```
 
-Contacts, Calendar, and Reminders can trigger framework permission prompts. Mail, Messages, Notes, and Safari return Full Disk Access setup instructions.
+Contacts, Calendar, and Reminders can trigger framework permission prompts. Photos, Mail, Messages, Notes, and Safari return Full Disk Access setup instructions.
 
 ## Item Lookup
 

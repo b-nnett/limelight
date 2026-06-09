@@ -21,7 +21,7 @@ If you are running code from outside `clients/python`, add that directory to `PY
 ```python
 from spotlight_index_client import SpotlightIndexClient
 
-client = SpotlightIndexClient()
+client = SpotlightIndexClient(auth_token="local-token")
 ```
 
 With a custom base URL:
@@ -30,10 +30,13 @@ With a custom base URL:
 client = SpotlightIndexClient(base_url="http://127.0.0.1:8765")
 ```
 
-With HTTP auth:
+With HTTP auth from an installed Limelight app:
 
 ```python
-client = SpotlightIndexClient(auth_token="local-token")
+from pathlib import Path
+
+auth_token = Path("~/Library/Application Support/Limelight/auth-token").expanduser().read_text().strip()
+client = SpotlightIndexClient(auth_token=auth_token)
 ```
 
 ## Search
@@ -105,10 +108,10 @@ client.capabilities()
 Request permission prompts or setup guidance:
 
 ```python
-client.request_permissions(["contacts", "calendar", "reminders", "mail", "messages", "notes", "safari"])
+client.request_permissions(["contacts", "calendar", "reminders", "photos", "mail", "messages", "notes", "safari"])
 ```
 
-Contacts, Calendar, and Reminders can trigger framework permission prompts. Mail, Messages, Notes, and Safari return Full Disk Access setup instructions.
+Contacts, Calendar, and Reminders can trigger framework permission prompts. Photos, Mail, Messages, Notes, and Safari return Full Disk Access setup instructions.
 
 ## Item Lookup
 

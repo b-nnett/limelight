@@ -7,7 +7,7 @@ Full documentation: [Python Client](../../docs/PYTHON_CLIENT.md).
 ```python
 from spotlight_index_client import SpotlightIndexClient
 
-client = SpotlightIndexClient()
+client = SpotlightIndexClient(auth_token="local-token")
 for result in client.search("passport", sources=["photos"], types=["image"], limit=5):
     print(result.source, result.title, result.path)
 ```
