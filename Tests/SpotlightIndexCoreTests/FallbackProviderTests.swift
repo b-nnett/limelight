@@ -436,6 +436,14 @@ final class FallbackProviderTests: XCTestCase {
         XCTAssertTrue(response.providers.allSatisfy { !$0.status.isEmpty && !$0.summary.isEmpty })
     }
 
+    func testPermissionBootstrapperTreatsPhotosAsManualProtectedSource() throws {
+        let response = try SpotlightSearchService().requestPermissions(PermissionRequest(sources: ["photos", "files"]))
+
+        XCTAssertEqual(response.results.first(where: { $0.source == "photos" })?.status, "manual")
+        XCTAssertNotNil(response.results.first(where: { $0.source == "photos" })?.setupHint)
+        XCTAssertEqual(response.results.first(where: { $0.source == "files" })?.status, "not_required")
+    }
+
     func testFileSearchResultAnnotatesFilenameMatches() {
         let record = SpotlightRecord(
             id: "file-1",

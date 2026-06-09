@@ -236,7 +236,7 @@ public struct SearchAuditContext: Equatable, Sendable {
     }
 }
 
-private struct HTTPRequest {
+struct HTTPRequest {
     let method: String
     let path: String
     let queryItems: [String: String]

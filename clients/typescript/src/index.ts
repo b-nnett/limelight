@@ -253,6 +253,8 @@ export interface SpotlightRecord {
   bundleIdentifier?: string | null;
   createdAt?: string | null;
   modifiedAt?: string | null;
+  startAt?: string | null;
+  endAt?: string | null;
   authors?: string[] | null;
   sizeBytes?: number | null;
   metadata: Metadata;

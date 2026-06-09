@@ -233,7 +233,7 @@ test("simple endpoint contracts use expected routes and bodies", async () => {
       run: (client) => client.item("/tmp/a file & more.txt"),
       method: "GET",
       path: "/v1/item?path=%2Ftmp%2Fa+file+%26+more.txt",
-      response: { item: { id: "item-1", path: "/tmp/a file & more.txt", metadata: {} } },
+      response: { item: { id: "item-1", path: "/tmp/a file & more.txt", startAt: null, endAt: null, metadata: {} } },
     },
     {
       name: "provider item",

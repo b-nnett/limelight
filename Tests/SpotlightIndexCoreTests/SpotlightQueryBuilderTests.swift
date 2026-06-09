@@ -15,6 +15,7 @@ final class SpotlightQueryBuilderTests: XCTestCase {
         XCTAssertFalse(built.expression.contains("== '*'"))
         XCTAssertFalse(built.expression.contains("Codex'"))
         XCTAssertTrue(built.expression.contains("Codex kMDItemFSName"))
+        XCTAssertTrue(built.expression.contains("'*Codex kMDItemFSName*'cd"))
         XCTAssertTrue(built.expression.contains("kMDItemContentType == 'com.apple.application-bundle'"))
         XCTAssertEqual(built.scopes, ["/Applications"])
         XCTAssertEqual(built.limit, 500)
