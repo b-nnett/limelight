@@ -9,7 +9,8 @@ It runs locally on your Mac and exposes a small loopback HTTP API so any agent o
 ## Contents
 
 - [Install](#install)
-- [Use With Codex And Agents](#use-with-codex-and-agents)
+- [Use With Codex](#use-with-codex)
+- [Use With Agents](#use-with-agents)
 - [What It Can Search](#what-it-can-search)
 - [Developer Quick Start](#developer-quick-start)
 - [Documentation](#documentation)
@@ -29,7 +30,11 @@ Once running, Limelight listens on `127.0.0.1:8765` by default.
 
 See [Installation](docs/INSTALLATION.md) for local development installs, signing, LaunchAgent setup, and auth.
 
-## Use With Codex And Agents
+## Use With Codex
+
+Install the [Limelight Codex Plugin](https://github.com/b-nnett/limelight-codex-plugin#install) to use Limelight directly from Codex.
+
+## Use With Agents
 
 Agents can query Limelight through its local HTTP API. A basic search looks like this:
 
