@@ -1,0 +1,375 @@
+import Foundation
+import Network
+
+private final class ListenerStartupState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedError: Error?
+
+    func setError(_ error: Error) {
+        lock.lock()
+        storedError = error
+        lock.unlock()
+    }
+
+    func error() -> Error? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedError
+    }
+}
+
+public final class SpotlightHTTPServer: @unchecked Sendable {
+    public typealias SearchObserver = @Sendable (SearchRequest, SearchResponse, SearchAuditContext) -> Void
+
+    private let host: NWEndpoint.Host
+    private let port: NWEndpoint.Port
+    private let service: SpotlightSearchService
+    private let onSearch: SearchObserver?
+    private let queue = DispatchQueue(label: "spotlight-index.http")
+    private var listener: NWListener?
+
+    public init(
+        host: String = "127.0.0.1",
+        port: UInt16 = 8765,
+        service: SpotlightSearchService = SpotlightSearchService(),
+        onSearch: SearchObserver? = nil
+    ) {
+        self.host = NWEndpoint.Host(host)
+        self.port = NWEndpoint.Port(rawValue: port) ?? 8765
+        self.service = service
+        self.onSearch = onSearch
+    }
+
+    public func start() throws {
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: host, port: port)
+        let listener = try NWListener(using: parameters)
+        listener.service = nil
+        let startupSemaphore = DispatchSemaphore(value: 0)
+        let startupState = ListenerStartupState()
+        listener.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                startupSemaphore.signal()
+            case .failed(let error):
+                startupState.setError(error)
+                startupSemaphore.signal()
+            default:
+                break
+            }
+        }
+        listener.newConnectionHandler = { [service, onSearch] connection in
+            HTTPConnectionHandler(connection: connection, service: service, onSearch: onSearch).start()
+        }
+        listener.start(queue: queue)
+        if startupSemaphore.wait(timeout: .now() + 2) == .timedOut {
+            listener.cancel()
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(ETIMEDOUT), userInfo: [NSLocalizedDescriptionKey: "timed out waiting for listener startup"])
+        }
+        if let startupError = startupState.error() {
+            listener.cancel()
+            throw startupError
+        }
+        listener.stateUpdateHandler = nil
+        self.listener = listener
+    }
+
+    public func stop() {
+        listener?.cancel()
+        listener = nil
+    }
+}
+
+private final class HTTPConnectionHandler: @unchecked Sendable {
+    private let connection: NWConnection
+    private let service: SpotlightSearchService
+    private let onSearch: SpotlightHTTPServer.SearchObserver?
+    private var buffer = Data()
+    private var retainSelf: HTTPConnectionHandler?
+    private static let maxHeaderBytes = 32 * 1024
+    private static let maxBodyBytes = 10 * 1024 * 1024
+    private static let maxRequestBytes = maxHeaderBytes + maxBodyBytes
+    private let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
+
+    init(connection: NWConnection, service: SpotlightSearchService, onSearch: SpotlightHTTPServer.SearchObserver?) {
+        self.connection = connection
+        self.service = service
+        self.onSearch = onSearch
+    }
+
+    func start() {
+        retainSelf = self
+        connection.start(queue: DispatchQueue(label: "spotlight-index.connection"))
+        receive()
+    }
+
+    private func receive() {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, isComplete, error in
+            guard let self else {
+                return
+            }
+
+            if let data {
+                self.buffer.append(data)
+            }
+
+            if self.buffer.count > Self.maxRequestBytes {
+                self.send(status: 413, body: ErrorResponse(error: "request body is too large"))
+                return
+            }
+
+            switch HTTPRequest.parse(data: self.buffer, maxHeaderBytes: Self.maxHeaderBytes, maxBodyBytes: Self.maxBodyBytes) {
+            case .complete(let request):
+                self.handle(request)
+            case .payloadTooLarge:
+                self.send(status: 413, body: ErrorResponse(error: "request body is too large"))
+            case .badRequest:
+                self.send(status: 400, body: ErrorResponse(error: "malformed HTTP request"))
+            case .incomplete where isComplete || error != nil:
+                self.send(status: 400, body: ErrorResponse(error: "malformed HTTP request"))
+            case .incomplete:
+                self.receive()
+            }
+        }
+    }
+
+    private func handle(_ request: HTTPRequest) {
+        do {
+            switch (request.method, request.path) {
+            case ("GET", "/health"):
+                send(status: 200, body: service.health())
+            case ("GET", "/v1/schema"):
+                send(status: 200, body: service.schema())
+            case ("GET", "/v1/providers"):
+                send(status: 200, body: service.providerReadiness())
+            case ("GET", "/v1/capabilities"):
+                send(status: 200, body: service.capabilities())
+            case ("POST", "/v1/permissions/request"):
+                let permissionRequest = try JSONDecoder().decode(PermissionRequest.self, from: request.body)
+                send(status: 200, body: try service.requestPermissions(permissionRequest))
+            case ("POST", "/v1/deep-search"):
+                let deepSearchRequest = try JSONDecoder().decode(DeepSearchRequest.self, from: request.body)
+                send(status: 200, body: try service.deepSearch(deepSearchRequest))
+            case ("POST", "/v1/ocr"):
+                let ocrRequest = try JSONDecoder().decode(OCRRequest.self, from: request.body)
+                send(status: 200, body: try service.ocr(ocrRequest))
+            case ("POST", "/v1/extract"):
+                let extractRequest = try JSONDecoder().decode(ExtractRequest.self, from: request.body)
+                send(status: 200, body: try service.extract(extractRequest))
+            case ("POST", "/v1/open"):
+                let openRequest = try JSONDecoder().decode(OpenItemRequest.self, from: request.body)
+                send(status: 200, body: try service.open(openRequest))
+            case ("GET", "/v1/item"):
+                if let path = request.queryItems["path"], !path.isEmpty {
+                    send(status: 200, body: try service.item(at: path))
+                } else if let source = request.queryItems["source"], !source.isEmpty,
+                          let id = request.queryItems["id"], !id.isEmpty {
+                    send(status: 200, body: try service.item(source: source, id: id))
+                } else {
+                    send(status: 400, body: ErrorResponse(error: "missing required query parameter: path or source and id"))
+                }
+            case ("GET", "/v1/photos/thumbnail"):
+                guard let uuid = request.queryItems["id"] ?? request.queryItems["uuid"], !uuid.isEmpty else {
+                    send(status: 400, body: ErrorResponse(error: "missing required query parameter: id"))
+                    return
+                }
+                let file = try service.photoThumbnail(uuid: uuid)
+                sendFile(path: file.path, contentType: file.contentType)
+            case ("POST", "/v1/search"):
+                let searchRequest = try JSONDecoder().decode(SearchRequest.self, from: request.body)
+                let response = try service.search(searchRequest)
+                onSearch?(searchRequest, response, SearchAuditContext(request: request))
+                send(status: 200, body: response)
+            default:
+                send(status: 404, body: ErrorResponse(error: "not found"))
+            }
+        } catch {
+            send(status: httpStatus(for: error), body: ErrorResponse(error: error.localizedDescription))
+        }
+    }
+
+    private func send<T: Encodable>(status: Int, body: T) {
+        let responseBody: Data
+        do {
+            responseBody = try encoder.encode(body)
+        } catch {
+            responseBody = Data("{\"error\":\"failed to encode response\"}".utf8)
+        }
+
+        let reason = HTTPStatus.reasonPhrase(for: status)
+        let header = """
+        HTTP/1.1 \(status) \(reason)\r
+        Content-Type: application/json; charset=utf-8\r
+        Content-Length: \(responseBody.count)\r
+        Connection: close\r
+        \r
+
+        """
+        var response = Data(header.utf8)
+        response.append(responseBody)
+
+        connection.send(content: response, completion: .contentProcessed { [connection] _ in
+            connection.cancel()
+            self.retainSelf = nil
+        })
+    }
+
+    private func sendFile(path: String, contentType: String) {
+        do {
+            let fileData = try Data(contentsOf: URL(fileURLWithPath: path), options: [.mappedIfSafe])
+            let header = """
+            HTTP/1.1 200 OK\r
+            Content-Type: \(contentType)\r
+            Content-Length: \(fileData.count)\r
+            Cache-Control: private, max-age=300\r
+            Connection: close\r
+            \r
+
+            """
+            var response = Data(header.utf8)
+            response.append(fileData)
+            connection.send(content: response, completion: .contentProcessed { [connection] _ in
+                connection.cancel()
+                self.retainSelf = nil
+            })
+        } catch {
+            send(status: 404, body: ErrorResponse(error: "thumbnail file is not readable"))
+        }
+    }
+}
+
+func httpStatus(for error: Error) -> Int {
+    switch error {
+    case SpotlightSearchError.ocrFileTooLarge, SpotlightSearchError.ocrImageTooLarge:
+        return 413
+    default:
+        return 400
+    }
+}
+
+public struct SearchAuditContext: Equatable, Sendable {
+    public let originatorApp: String
+    public let userAgent: String?
+
+    fileprivate init(request: HTTPRequest) {
+        let explicitOrigin = request.headers["x-origin"] ?? request.headers["x-limelight-origin"] ?? request.headers["x-originator-app"]
+        let userAgent = request.headers["user-agent"]
+        self.originatorApp = explicitOrigin?.isEmpty == false ? explicitOrigin! : (userAgent?.isEmpty == false ? userAgent! : "Unknown local client")
+        self.userAgent = userAgent
+    }
+}
+
+struct HTTPRequest {
+    let method: String
+    let path: String
+    let queryItems: [String: String]
+    let headers: [String: String]
+    let body: Data
+
+    enum ParseResult {
+        case complete(HTTPRequest)
+        case incomplete
+        case badRequest
+        case payloadTooLarge
+    }
+
+    static func parse(data: Data, maxHeaderBytes: Int, maxBodyBytes: Int) -> ParseResult {
+        guard let headerEnd = data.range(of: Data("\r\n\r\n".utf8)) else {
+            return data.count > maxHeaderBytes ? .payloadTooLarge : .incomplete
+        }
+        guard headerEnd.lowerBound <= maxHeaderBytes else {
+            return .payloadTooLarge
+        }
+
+        let headerData = data[..<headerEnd.lowerBound]
+        guard let headerString = String(data: headerData, encoding: .utf8) else {
+            return .badRequest
+        }
+
+        let lines = headerString.components(separatedBy: "\r\n")
+        guard let requestLine = lines.first else {
+            return .badRequest
+        }
+
+        let requestParts = requestLine.split(separator: " ", maxSplits: 2).map(String.init)
+        guard requestParts.count >= 2 else {
+            return .badRequest
+        }
+
+        var headers: [String: String] = [:]
+        for line in lines.dropFirst() {
+            guard let separator = line.firstIndex(of: ":") else {
+                continue
+            }
+            let key = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
+            if key == "content-length", let existing = headers[key], existing != value {
+                return .badRequest
+            }
+            headers[key] = value
+        }
+
+        let contentLengthValue = headers["content-length"] ?? "0"
+        guard let contentLength = Int(contentLengthValue), contentLength >= 0 else {
+            return .badRequest
+        }
+        guard contentLength <= maxBodyBytes else {
+            return .payloadTooLarge
+        }
+        let bodyStart = headerEnd.upperBound
+        guard data.count >= bodyStart + contentLength else {
+            return .incomplete
+        }
+
+        let rawTarget = requestParts[1]
+        guard let components = URLComponents(string: "http://127.0.0.1\(rawTarget)") else {
+            return .badRequest
+        }
+        var queryItems: [String: String] = [:]
+        for item in components.queryItems ?? [] {
+            guard let value = item.value else {
+                continue
+            }
+            queryItems[item.name] = value
+        }
+        return .complete(HTTPRequest(
+            method: requestParts[0],
+            path: components.path,
+            queryItems: queryItems,
+            headers: headers,
+            body: Data(data[bodyStart..<(bodyStart + contentLength)])
+        ))
+    }
+
+    private init(method: String, path: String, queryItems: [String: String], headers: [String: String], body: Data) {
+        self.method = method
+        self.path = path
+        self.queryItems = queryItems
+        self.headers = headers
+        self.body = body
+    }
+}
+
+private enum HTTPStatus {
+    static func reasonPhrase(for status: Int) -> String {
+        switch status {
+        case 200:
+            "OK"
+        case 400:
+            "Bad Request"
+        case 404:
+            "Not Found"
+        case 401:
+            "Unauthorized"
+        case 413:
+            "Payload Too Large"
+        default:
+            "Internal Server Error"
+        }
+    }
+}

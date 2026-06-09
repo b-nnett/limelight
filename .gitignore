@@ -1,0 +1,17 @@
+.build/
+.swiftpm/
+DerivedData/
+.DS_Store
+*.xcuserdatad
+*.xcworkspace/xcuserdata/
+
+# JavaScript client build and install output.
+node_modules/
+clients/typescript/node_modules/
+dist/
+dist-test/
+clients/typescript/dist/
+clients/typescript/dist-test/
+
+# Release/package output.
+/dist/

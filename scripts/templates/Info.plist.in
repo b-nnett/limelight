@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>@APP_EXECUTABLE_NAME@</string>
+	<key>CFBundleIdentifier</key>
+	<string>@BUNDLE_ID@</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>@APP_NAME@</string>
+	<key>CFBundleDisplayName</key>
+	<string>@APP_NAME@</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@BUILD_NUMBER@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Limelight reads local Calendar metadata to return matching local search results.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Limelight reads local Calendar metadata to return matching local search results.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Limelight reads local Contacts metadata to return matching local search results and birthday fallback records.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Limelight reads local Reminders metadata to return matching local search results.</string>
+@EXPECTED_TEAM_IDENTIFIER_PLIST@
+</dict>
+</plist>
